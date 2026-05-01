@@ -1,70 +1,148 @@
+// This file defines the CustomNode component used to render each node in the React Flow graph.
 import { Handle, Position } from 'reactflow';
 
-type NodeType = 'controller' | 'service' | 'route' | 'middleware' | 'model' | 'facade' | 'repository'|'client' | 'job' | 'event';
+export type NodeType =
+  | 'controller' | 'service'    | 'route'      | 'middleware'
+  | 'model'      | 'facade'     | 'repository' | 'client'
+  | 'job'        | 'event'      | 'listener'   | 'policy'
+  | 'request'    | 'resource'   | 'observer'   | 'command'
+  | 'deleted'    | 'broken';   // ← NEW types
 
 interface CustomNodeProps {
   data: {
-    label: string;
-    type: NodeType;
+    label:      string;
+    type:       NodeType;
     hasMismatch?: boolean;
+    isDeleted?:   boolean;
+    isBroken?:    boolean;
   };
 }
 
-const NODE_STYLES: Record<NodeType, { bg: string; border: string; color: string; icon: string; label: string }> = {
-  route:      { bg: '#ede9fe', border: '#7c3aed', color: '#4c1d95', icon: '🛣️',  label: 'Route'      },
-  middleware: { bg: '#ffedd5', border: '#ea580c', color: '#7c2d12', icon: '🔒',  label: 'Middleware' },
-  controller: { bg: '#dbeafe', border: '#2563eb', color: '#1e3a8a', icon: '🎮',  label: 'Controller' },
-  service:    { bg: '#dcfce7', border: '#16a34a', color: '#14532d', icon: '⚙️',  label: 'Service'    },
-  repository: { bg: '#cffafe', border: '#0891b2', color: '#164e63', icon: '🗄️',  label: 'Repository' },
-  model:      { bg: '#fef9c3', border: '#ca8a04', color: '#713f12', icon: '📦',  label: 'Model'      },
-  facade:     { bg: '#f1f5f9', border: '#64748b', color: '#1e293b', icon: '🏛️',  label: 'Facade'     },
-  client:     { bg: '#f0f4ff', border: '#6366f1', color: '#312e81', icon: '🔌', label: 'Client'  },
-  job:        { bg: '#fdf4ff', border: '#a855f7', color: '#581c87', icon: '⚡', label: 'Job'     },
-  event:      { bg: '#fff7ed', border: '#f97316', color: '#7c2d12', icon: '📡', label: 'Event'   },
+const NODE_CONFIG: Record<NodeType, { accent: string; icon: string; label: string }> = {
+  route:      { accent: '#4f46e5', icon: '🛣️',  label: 'Route'       },
+  middleware: { accent: '#d97706', icon: '🔒',  label: 'Middleware'  },
+  controller: { accent: '#2563eb', icon: '🎮',  label: 'Controller'  },
+  service:    { accent: '#0d9488', icon: '⚙️',  label: 'Service'     },
+  repository: { accent: '#0891b2', icon: '🗄️',  label: 'Repository'  },
+  model:      { accent: '#92400e', icon: '📦',  label: 'Model'       },
+  facade:     { accent: '#475569', icon: '🏛️',  label: 'Facade'      },
+  client:     { accent: '#7c3aed', icon: '🔌',  label: 'Client'      },
+  job:        { accent: '#a855f7', icon: '⚡',  label: 'Job'         },
+  event:      { accent: '#f97316', icon: '📡',  label: 'Event'       },
+  listener:   { accent: '#0f766e', icon: '👂',  label: 'Listener'    },
+  policy:     { accent: '#be185d', icon: '🛡️',  label: 'Policy'      },
+  request:    { accent: '#1d4ed8', icon: '📨',  label: 'Request'     },
+  resource:   { accent: '#047857', icon: '📤',  label: 'Resource'    },
+  observer:   { accent: '#b45309', icon: '👁️',  label: 'Observer'    },
+  command:    { accent: '#1e293b', icon: '⌨️',  label: 'Command'     },
+  // ── New types ─────────────────────────────────────────────────────────
+  deleted:    { accent: '#6b7280', icon: '🗑️',  label: 'Deleted'     },
+  broken:     { accent: '#f97316', icon: '💥',  label: 'Broken ref'  },
 };
 
 export function CustomNode({ data }: CustomNodeProps) {
-  const style = NODE_STYLES[data.type] ?? NODE_STYLES.service;
+  const config     = NODE_CONFIG[data.type] ?? NODE_CONFIG.service;
   const hasMismatch = data.hasMismatch || false;
+  const isDeleted   = data.isDeleted   || data.type === 'deleted';
+  const isBroken    = data.isBroken    || data.type === 'broken';
+
+  // Color priority: broken > mismatch > deleted > normal
+  let accent = config.accent;
+  if (isBroken)    accent = '#f97316'; // orange
+  if (hasMismatch) accent = '#dc2626'; // red
+  if (isDeleted)   accent = '#6b7280'; // gray
 
   return (
-    <div
-      style={{
-        padding: '12px 16px',
-        borderRadius: '8px',
-        border: hasMismatch
-          ? '3px solid #ef4444'
-          : `2px solid ${style.border}`,
-        backgroundColor: style.bg,
-        boxShadow: hasMismatch
-          ? '0 0 12px rgba(239, 68, 68, 0.3)'
-          : `0 1px 4px rgba(0,0,0,0.08)`,
-        minWidth: '160px',
-        textAlign: 'center',
-        fontWeight: 500,
-        fontSize: '13px',
-        color: style.color,
-      }}
-    >
+    <div style={{
+      position: 'relative',
+      padding: '10px 14px',
+      paddingTop: '14px',
+      borderRadius: '10px',
+      border: `2px solid ${accent}`,
+      backgroundColor: 'var(--node-bg)',
+      boxShadow: isBroken
+        ? `0 0 0 3px rgba(249,115,22,0.2), 0 2px 8px rgba(0,0,0,0.12)`
+        : hasMismatch
+          ? `0 0 0 3px rgba(220,38,38,0.15), 0 2px 8px rgba(0,0,0,0.12)`
+          : `0 2px 8px rgba(0,0,0,0.08)`,
+      minWidth: '160px',
+      maxWidth: '220px',
+      textAlign: 'center',
+      opacity: isDeleted ? 0.65 : 1,  // dim deleted nodes
+    }}>
+
+      {/* Accent top bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        height: '4px', borderRadius: '8px 8px 0 0',
+        backgroundColor: accent,
+      }} />
+
       {/* Type badge */}
-      <div style={{ marginBottom: '4px', fontSize: '10px', opacity: 0.75 }}>
-        {style.icon} {style.label}
+      <div style={{
+        marginBottom: '5px', fontSize: '10px', fontWeight: 600,
+        letterSpacing: '0.05em', textTransform: 'uppercase',
+        color: accent,
+      }}>
+        {config.icon} {config.label}
       </div>
 
-      {/* Label */}
-      <div style={{ wordBreak: 'break-word', color: style.color }}>
+      {/* Label — strikethrough if deleted */}
+      <div style={{
+        wordBreak: 'break-word', fontSize: '12px', fontWeight: 500,
+        color: 'var(--node-text)', lineHeight: 1.4,
+        textDecoration: isDeleted ? 'line-through' : 'none',
+      }}>
         {data.label}
       </div>
 
-      {/* Mismatch warning */}
-      {hasMismatch && (
-        <div style={{ marginTop: '6px', fontSize: '10px', color: '#ef4444', fontWeight: 'bold' }}>
+      {/* Status badges */}
+      {hasMismatch && !isBroken && (
+        <div style={{
+          marginTop: '6px', padding: '2px 6px',
+          backgroundColor: 'rgba(220,38,38,0.1)',
+          borderRadius: '4px', fontSize: '10px',
+          color: '#dc2626', fontWeight: 700,
+        }}>
           ⚠️ TYPE MISMATCH
         </div>
       )}
 
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      {isBroken && (
+        <div style={{
+          marginTop: '6px', padding: '2px 6px',
+          backgroundColor: 'rgba(249,115,22,0.1)',
+          borderRadius: '4px', fontSize: '10px',
+          color: '#f97316', fontWeight: 700,
+        }}>
+          💥 BROKEN DEPENDENCY
+        </div>
+      )}
+
+      {isDeleted && (
+        <div style={{
+          marginTop: '6px', padding: '2px 6px',
+          backgroundColor: 'rgba(107,114,128,0.1)',
+          borderRadius: '4px', fontSize: '10px',
+          color: '#6b7280', fontWeight: 700,
+        }}>
+          🗑️ DELETED IN THIS PR
+        </div>
+      )}
+
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: accent, width: 8, height: 8 }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: accent, width: 8, height: 8 }}
+      />
     </div>
   );
 }
+
+
+
