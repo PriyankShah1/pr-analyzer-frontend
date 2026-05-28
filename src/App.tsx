@@ -220,7 +220,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 18 }}>🔍</span>
           <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.02em' }}>PR Analyzer</span>
-          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, backgroundColor: 'var(--accent)', color: '#fff' }}>v2</span>
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, backgroundColor: 'var(--accent)', color: '#fff' }}>v3</span>
         </div>
 
         {/* Spacer */}
