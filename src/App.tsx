@@ -3,27 +3,10 @@ import axios from 'axios';
 import { FlowVisualization } from './components/Graph/FlowVisualization';
 import { useTheme } from './hooks/useTheme';
 import { useHistory } from './hooks/useHistory';
-import type { PRHistoryItem } from './hooks/useHistory';
+import type { PRHistoryItem, AnalysisResponse } from './types';
 import './App.css';
 
 const API = import.meta.env.VITE_API_URL;
-
-interface AnalysisResponse {
-  prTitle?: string;   // ← add
-  prNumber?: number;   // ← add
-  prAuthor?: string;   // ← add
-  prState?: string;   // ← add
-  visualization?: {
-    nodes: any[];
-    edges: any[];
-    stats: { totalNodes: number; totalEdges: number; mismatches: number; };
-  };
-  flows?: any[];
-  files?: any[];
-  warnings?: string[];
-  message?: string;
-  fromCache?: boolean;
-}
 
 const THEME_VARS = {
   light: {
@@ -466,9 +449,12 @@ export default function App() {
                 edges={result.visualization.edges}
                 theme={theme}
                 flows={result.flows}
-                prTitle={result.prTitle}   // ← was getPRTitle(prUrl), now real title from API
+                prTitle={result.prTitle}
                 prUrl={prUrl}
                 stats={result.visualization.stats}
+                codeLanguage={result.language}
+                codeContext={result.codeContext}
+                aiExplanations={result.aiExplanations}
               />
             </div>
           )}

@@ -12,6 +12,7 @@ import 'reactflow/dist/style.css';
 import { CustomNode } from './CustomNode';
 import { Legend } from './Legend';
 import { FlowDetails } from './FlowDetails';
+import { AIExplanation } from './AIExplanation';
 import { Pill } from '../Common/Pill';
 import type { AnalysisFlow, AnalysisStats, Theme } from '../../types';
 
@@ -25,9 +26,15 @@ interface FlowVisualizationProps {
   prTitle?: string;
   prUrl?:   string;
   stats?:   AnalysisStats;
+  codeLanguage?: string;
+  codeContext?:  string;
+  aiExplanations?: Record<string, string>;
 }
 
-function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVisualizationProps) {
+function FlowInner({
+  nodes, edges, theme, flows, prTitle, prUrl, stats,
+  codeLanguage, codeContext, aiExplanations,
+}: FlowVisualizationProps) {
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
   const { getNodes } = useReactFlow();
@@ -67,6 +74,7 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
     clone.style.transformOrigin = '0 0';
     offscreen.appendChild(clone);
     document.body.appendChild(offscreen);
+
     await new Promise(r => setTimeout(r, 80));
 
     try {
@@ -98,7 +106,6 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         backgroundColor: 'var(--surface)',
         flexShrink: 0,
       }}>
-        {/* Row 1: label + export */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <span style={{
             fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
@@ -116,7 +123,6 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
           </button>
         </div>
 
-        {/* Row 2: PR Title */}
         {prTitle ? (
           <a
             href={prUrl}
@@ -139,7 +145,6 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
           <div style={{ height: 4 }} />
         )}
 
-        {/* Row 3: Stats pills */}
         {stats && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Pill color="var(--text-muted)" label={`${stats.totalNodes} nodes`} />
@@ -157,10 +162,8 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         )}
       </div>
 
-      {/* Legend */}
       <Legend />
 
-      {/* Graph */}
       <div style={{ flex: 1, minHeight: 0 }}>
         <ReactFlow
           nodes={nodesState}
@@ -181,8 +184,21 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         </ReactFlow>
       </div>
 
-      {/* Flow details */}
       <FlowDetails flows={flows || []} />
+
+      {/* AI Explanation — always visible below the graph. Languages are
+          fetched dynamically from the backend; zero hardcoding here, so
+          adding a 5th language requires no frontend changes. */}
+      {stats && flows && (
+        <AIExplanation
+          prTitle={prTitle}
+          codeLanguage={codeLanguage}
+          flows={flows}
+          stats={stats}
+          codeContext={codeContext}
+          initialExplanations={aiExplanations}
+        />
+      )}
     </div>
   );
 }
