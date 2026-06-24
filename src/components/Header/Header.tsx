@@ -3,10 +3,10 @@ import { HamburgerIcon } from './HamburgerIcon';
 import type { Theme } from '../../types';
 
 interface HeaderProps {
-  sidebarOpen: boolean;
+  sidebarOpen:    boolean;
   onToggleSidebar: () => void;
-  theme: Theme;
-  onToggleTheme: () => void;
+  theme:          Theme;
+  onToggleTheme:  () => void;
 }
 
 export function Header({ sidebarOpen, onToggleSidebar, theme, onToggleTheme }: HeaderProps) {
@@ -38,19 +38,18 @@ export function Header({ sidebarOpen, onToggleSidebar, theme, onToggleTheme }: H
         <span style={{
           fontSize: 9, fontWeight: 700, padding: '2px 5px',
           borderRadius: 4, backgroundColor: 'var(--accent)', color: '#fff',
-        }}>v2</span>
+        }}>
+          v4
+        </span>
       </div>
 
       <div style={{ flex: 1 }} />
 
-      <button
-        onClick={onToggleTheme}
-        style={{
-          background: 'none', border: '1px solid var(--border)',
-          borderRadius: 6, padding: '4px 10px',
-          cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 12,
-        }}
-      >
+      <button onClick={onToggleTheme} style={{
+        background: 'none', border: '1px solid var(--border)',
+        borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+        color: 'var(--text-secondary)', fontSize: 12,
+      }}>
         {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
       </button>
     </header>
