@@ -96,14 +96,21 @@ function FlowInner({
 
   const hasBottomPanels = stats && flows && flows.length > 0 && stats.totalNodes > 0;
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>  {/* ← no height: 100%, page scrolls */}
+  // Header height (48px) is already outside this component.
+  // PR title bar + legend ≈ 110px. So graph gets remaining viewport height.
+  const GRAPH_HEIGHT = 'calc(100vh - 180px)';
 
-      {/* ── Header ── */}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+
+      {/* ── PR title bar + stats — sticky so it stays visible while scrolling ── */}
       <div style={{
-        padding: '10px 16px',
-        borderBottom: '1px solid var(--border)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
         backgroundColor: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
+        padding: '10px 16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <span style={{
@@ -141,7 +148,7 @@ function FlowInner({
         )}
 
         {stats && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             <Pill color="var(--text-muted)" label={`${stats.totalNodes} nodes`} />
             <Pill color="var(--text-muted)" label={`${stats.totalEdges} edges`} />
             {(stats.mismatches ?? 0) > 0 && (
@@ -155,14 +162,14 @@ function FlowInner({
             )}
           </div>
         )}
+
+        {/* Legend lives inside the sticky bar — one single sticky block, no overlap */}
+        <Legend />
       </div>
 
-      {/* ── Legend ── */}
-      <Legend />
-
-      {/* ── Graph — fixed height so ReactFlow renders correctly ── */}
-      {/* Height is viewport-based so it always fills the visible screen */}
-      <div style={{ height: 'calc(100vh - 220px)', minHeight: 400 }}>
+      {/* ── Graph — fills the viewport height on load ── */}
+      {/* preventScrolling={false} lets the page scroll when mouse is over graph */}
+      <div style={{ height: GRAPH_HEIGHT, minHeight: 400 }}>
         <ReactFlow
           nodes={nodesState}
           edges={edgesState}
@@ -184,14 +191,13 @@ function FlowInner({
         </ReactFlow>
       </div>
 
-      {/* ── Bottom panels: AI Explanation | Flow Details side by side ── */}
-      {/* Auto height — expands to content, page scrolls to show it */}
+      {/* ── Bottom panels — scroll into view naturally ── */}
       {hasBottomPanels && (
         <div style={{
           display: 'flex',
           borderTop: '1px solid var(--border)',
           backgroundColor: 'var(--surface)',
-          minHeight: 200,    // minimum — grows with content
+          minHeight: 220,
         }}>
           <AIExplanation
             prTitle={prTitle}

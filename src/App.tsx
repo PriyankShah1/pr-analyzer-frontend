@@ -57,16 +57,17 @@ export default function App() {
   return (
     <div style={{
       ...vars as any,
-      minHeight: '100vh',               // ← was height: 100vh — now page can grow
+      height: '100vh',
       display: 'flex',
       flexDirection: 'column',
       backgroundColor: 'var(--bg)',
       color: 'var(--text)',
       fontFamily: "'DM Sans', system-ui, sans-serif",
       fontSize: '14px',
+      overflow: 'hidden', // ← outer shell never scrolls
     }}>
 
-      {/* Header — stays at top, not sticky (scrolls with page) */}
+      {/* ── Header — sticky, never moves ── */}
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(o => !o)}
@@ -74,9 +75,10 @@ export default function App() {
         onToggleTheme={toggleTheme}
       />
 
-      <div style={{ display: 'flex', flex: 1 }}>  {/* ← removed overflow: hidden */}
+      {/* ── Body row ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* Sidebar — scrolls with page */}
+        {/* ── Sidebar — sticky, never moves ── */}
         <Sidebar
           open={sidebarOpen}
           activePanel={activePanel}
@@ -96,8 +98,14 @@ export default function App() {
           onClearHistory={clearHistory}
         />
 
-        {/* Main content — no overflow hidden, scrolls naturally */}
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* ── Main content — this is the ONLY thing that scrolls ── */}
+        <main style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto',   // ← only this scrolls
+          overflowX: 'hidden',
+        }}>
 
           {error && (
             <ErrorBanner
@@ -112,30 +120,39 @@ export default function App() {
           {/* Empty state */}
           {!result && !loading && !error && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-muted)', gap: 12,
-              textAlign: 'center', padding: 24,
-              minHeight: 'calc(100vh - 48px)',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+              gap: 12,
+              textAlign: 'center',
+              padding: 24,
+              minHeight: '100%',
             }}>
               <div style={{ fontSize: 52 }}>🔍</div>
               <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--text-secondary)' }}>
                 Paste a GitHub PR URL to get started
               </div>
               <div style={{ fontSize: 13 }}>
-                Works with JavaScript, TypeScript, PHP &amp; Laravel (Prisma, Mongoose, TypeORM, NestJS)
+                Works with JavaScript, TypeScript, PHP &amp; Laravel (Express, NestJS, Prisma, Mongoose, TypeORM)
               </div>
               <div style={{ fontSize: 12 }}>Add your token in the sidebar for private repos</div>
             </div>
           )}
 
-          {/* No supported files found */}
+          {/* No supported files */}
           {result?.message && result.visualization?.nodes.length === 0 && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-muted)', gap: 8,
-              minHeight: 'calc(100vh - 48px)',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+              gap: 8,
+              minHeight: '100%',
             }}>
               <div style={{ fontSize: 36 }}>📭</div>
               <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>No supported files found</div>
@@ -143,7 +160,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Graph — full width, scrolls naturally with page */}
+          {/* Graph + panels — scrolls naturally */}
           {result?.visualization && result.visualization.nodes.length > 0 && (
             <FlowVisualization
               nodes={result.visualization.nodes}
