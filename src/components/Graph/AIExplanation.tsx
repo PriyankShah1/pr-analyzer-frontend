@@ -22,9 +22,8 @@ export function AIExplanation({
   const [explanations, setExplanations] = useState<Record<string, string>>(initialExplanations || {});
   const [loadingLang, setLoadingLang]   = useState<string | null>(null);
   const [errorLang, setErrorLang]       = useState<string | null>(null);
-  const [collapsed, setCollapsed]       = useState(false); // AI panel open by default
+  const [collapsed, setCollapsed]       = useState(false);
 
-  // ── Fetch available languages from backend — zero hardcoding ───────────
   useEffect(() => {
     axios.get(`${API}/explain/languages`)
       .then(res => {
@@ -58,10 +57,7 @@ export function AIExplanation({
 
   const handleTabClick = (langCode: string) => {
     setActiveLang(langCode);
-    // Client-side cache — only fetch if not already generated this session
-    if (!explanations[langCode]) {
-      fetchExplanation(langCode);
-    }
+    if (!explanations[langCode]) fetchExplanation(langCode);
   };
 
   if (!stats || stats.totalNodes === 0) return null;
@@ -69,38 +65,40 @@ export function AIExplanation({
 
   return (
     <div style={{
-      borderTop: '1px solid var(--border)',
-      backgroundColor: 'var(--surface)',
-      flexShrink: 0,
+      flex: 1, minWidth: 0,
+      borderRight: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column',
     }}>
-      {/* Collapsible header */}
+      {/* Panel header */}
       <button
         onClick={() => setCollapsed(c => !c)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '7px 16px', border: 'none', cursor: 'pointer',
-          backgroundColor: 'transparent', color: 'var(--text-muted)',
-          fontSize: 11, fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '7px 12px', border: 'none', cursor: 'pointer',
+          backgroundColor: 'var(--btn-bg)',
+          borderBottom: '1px solid var(--border)',
+          color: 'var(--text-muted)', fontSize: 10, fontWeight: 700,
           textTransform: 'uppercase', letterSpacing: '0.06em',
         }}
       >
         <span>✨ AI Explanation</span>
-        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          {collapsed ? '▼ Show' : '▲ Hide'}
-        </span>
+        <span>{collapsed ? '▼' : '▲'}</span>
       </button>
 
       {!collapsed && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           {/* Language tabs */}
-          <div style={{ display: 'flex', gap: 4, padding: '0 16px 8px', flexWrap: 'wrap' }}>
+          <div style={{
+            display: 'flex', gap: 4, padding: '6px 10px',
+            flexWrap: 'wrap',
+            borderBottom: '1px solid var(--border)',
+          }}>
             {languages.map(lang => (
               <button
                 key={lang.code}
                 onClick={() => handleTabClick(lang.code)}
                 style={{
-                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
                   border: `1px solid ${activeLang === lang.code ? 'var(--accent)' : 'var(--border)'}`,
                   backgroundColor: activeLang === lang.code ? 'var(--accent)' : 'var(--btn-bg)',
                   color: activeLang === lang.code ? '#fff' : 'var(--text-secondary)',
@@ -112,46 +110,35 @@ export function AIExplanation({
             ))}
           </div>
 
-          {/* Explanation content — maxHeight + scroll prevents graph compression */}
-          <div style={{
-            padding: '0 16px 14px',
-            maxHeight: 160,
-            overflowY: 'auto',
-            fontSize: 13, lineHeight: 1.6, color: 'var(--text)',
-          }}>
+          {/* Explanation — full height, no scroll cap, page scrolls instead */}
+          <div style={{ padding: '10px 12px', fontSize: 12, lineHeight: 1.7, color: 'var(--text)' }}>
             {loadingLang === activeLang && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                ⏳ Generating explanation...
-              </div>
+              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>⏳ Generating...</div>
             )}
-
             {errorLang === activeLang && loadingLang !== activeLang && (
               <div style={{ color: 'var(--mismatch)' }}>
-                ⚠️ Couldn't generate explanation right now.{' '}
+                ⚠️ Failed.{' '}
                 <button
                   onClick={() => fetchExplanation(activeLang)}
                   style={{
-                    background: 'none', border: 'none',
-                    color: 'var(--accent)', cursor: 'pointer',
-                    textDecoration: 'underline', padding: 0, fontSize: 13,
+                    background: 'none', border: 'none', color: 'var(--accent)',
+                    cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: 12,
                   }}
                 >
                   Retry
                 </button>
               </div>
             )}
-
             {loadingLang !== activeLang && errorLang !== activeLang && explanations[activeLang] && (
               <p style={{ margin: 0 }}>{explanations[activeLang]}</p>
             )}
-
-            {loadingLang !== activeLang && errorLang !== activeLang && !explanations[activeLang] && languages.length > 0 && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            {loadingLang !== activeLang && errorLang !== activeLang && !explanations[activeLang] && (
+              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>
                 Click a language tab to generate the explanation.
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
