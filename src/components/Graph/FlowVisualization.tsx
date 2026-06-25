@@ -9,10 +9,11 @@ import ReactFlow, {
   getTransformForBounds,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { CustomNode } from './CustomNode';
-import { Legend } from './Legend';
-import { FlowDetails } from './FlowDetails';
-import { Pill } from '../Common/Pill';
+import { CustomNode }    from './CustomNode';
+import { Legend }        from './Legend';
+import { FlowDetails }   from './FlowDetails';
+import { AIExplanation } from './AIExplanation';
+import { Pill }          from '../Common/Pill';
 import type { AnalysisFlow, AnalysisStats, Theme } from '../../types';
 
 const nodeTypes: NodeTypes = { custom: CustomNode };
@@ -25,9 +26,15 @@ interface FlowVisualizationProps {
   prTitle?: string;
   prUrl?:   string;
   stats?:   AnalysisStats;
+  codeLanguage?:   string;
+  codeContext?:    string;
+  aiExplanations?: Record<string, string>;
 }
 
-function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVisualizationProps) {
+function FlowInner({
+  nodes, edges, theme, flows, prTitle, prUrl, stats,
+  codeLanguage, codeContext, aiExplanations,
+}: FlowVisualizationProps) {
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
   const { getNodes } = useReactFlow();
@@ -63,7 +70,7 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
     `;
 
     const clone = viewport.cloneNode(true) as HTMLElement;
-    clone.style.transform      = `translate(${tx}px, ${ty}px) scale(${zoom})`;
+    clone.style.transform       = `translate(${tx}px, ${ty}px) scale(${zoom})`;
     clone.style.transformOrigin = '0 0';
     offscreen.appendChild(clone);
     document.body.appendChild(offscreen);
@@ -78,7 +85,6 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         x: 0, y: 0, scrollX: 0, scrollY: 0,
         windowWidth: exportW, windowHeight: exportH,
       });
-
       const link = document.createElement('a');
       link.download = `${prTitle ? prTitle.replace(/[^a-z0-9]/gi, '-') : 'pr-flow-graph'}.png`;
       link.href = canvas.toDataURL('image/png');
@@ -88,17 +94,17 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
     }
   }, [theme, getNodes, prTitle]);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+  const hasBottomPanels = stats && flows && flows.length > 0 && stats.totalNodes > 0;
 
-      {/* Header */}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>  {/* ← no height: 100%, page scrolls */}
+
+      {/* ── Header ── */}
       <div style={{
         padding: '10px 16px',
         borderBottom: '1px solid var(--border)',
         backgroundColor: 'var(--surface)',
-        flexShrink: 0,
       }}>
-        {/* Row 1: label + export */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <span style={{
             fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
@@ -110,18 +116,15 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
             padding: '4px 10px', backgroundColor: 'var(--btn-bg)',
             border: '1px solid var(--border)', borderRadius: 6,
             cursor: 'pointer', fontSize: 11,
-            color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap',
+            color: 'var(--text-secondary)', fontWeight: 500,
           }}>
             📥 Export PNG
           </button>
         </div>
 
-        {/* Row 2: PR Title */}
-        {prTitle ? (
+        {prTitle && (
           <a
-            href={prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={prUrl} target="_blank" rel="noopener noreferrer"
             style={{
               display: 'block', fontSize: 15, fontWeight: 700,
               color: 'var(--text)', textDecoration: 'none',
@@ -135,11 +138,8 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
               ↗ open on GitHub
             </span>
           </a>
-        ) : (
-          <div style={{ height: 4 }} />
         )}
 
-        {/* Row 3: Stats pills */}
         {stats && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Pill color="var(--text-muted)" label={`${stats.totalNodes} nodes`} />
@@ -157,11 +157,12 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         )}
       </div>
 
-      {/* Legend */}
+      {/* ── Legend ── */}
       <Legend />
 
-      {/* Graph */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      {/* ── Graph — fixed height so ReactFlow renders correctly ── */}
+      {/* Height is viewport-based so it always fills the visible screen */}
+      <div style={{ height: 'calc(100vh - 220px)', minHeight: 400 }}>
         <ReactFlow
           nodes={nodesState}
           edges={edgesState}
@@ -171,6 +172,8 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
+          preventScrolling={false}
+          zoomOnScroll={false}
         >
           <Background
             variant={BackgroundVariant.Dots}
@@ -181,8 +184,26 @@ function FlowInner({ nodes, edges, theme, flows, prTitle, prUrl, stats }: FlowVi
         </ReactFlow>
       </div>
 
-      {/* Flow details */}
-      <FlowDetails flows={flows || []} />
+      {/* ── Bottom panels: AI Explanation | Flow Details side by side ── */}
+      {/* Auto height — expands to content, page scrolls to show it */}
+      {hasBottomPanels && (
+        <div style={{
+          display: 'flex',
+          borderTop: '1px solid var(--border)',
+          backgroundColor: 'var(--surface)',
+          minHeight: 200,    // minimum — grows with content
+        }}>
+          <AIExplanation
+            prTitle={prTitle}
+            codeLanguage={codeLanguage}
+            flows={flows!}
+            stats={stats!}
+            codeContext={codeContext}
+            initialExplanations={aiExplanations}
+          />
+          <FlowDetails flows={flows!} />
+        </div>
+      )}
     </div>
   );
 }
