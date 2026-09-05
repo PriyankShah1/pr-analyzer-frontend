@@ -11,7 +11,7 @@ import type { RefreshOutcome } from './components/History/HistoryBoard';
 import { useTheme }          from './hooks/useTheme';
 import { useHistory }        from './hooks/useHistory';
 import { useAnalyze }        from './hooks/useAnalyze';
-import type { PRHistoryItem } from './types';
+import type { AnalysisResponse, PRHistoryItem } from './types';
 import { DEMO_PR_URL } from './constants';
 import './App.css';
 
@@ -103,6 +103,7 @@ export default function App() {
 
       const sha = run.data.prHeadSha ?? null;
       if (item.id === activeHistoryId) {
+        remapSelection(run.data);
         adoptRun(run);
         setPrUrl(item.url);
       }
@@ -127,6 +128,27 @@ export default function App() {
   };
 
   /**
+   * Carry the current selection across a re-analysis.
+   *
+   * Node ids are POSITIONAL (visualizer.js numbers them in order), so removing
+   * one shifts every id after it. Holding on to the raw id across a refresh
+   * would silently point the detail panel at a different component. Labels are
+   * stable, so the selection is re-found by name, and dropped when that
+   * component is gone from the new graph.
+   */
+  const remapSelection = (next: AnalysisResponse | null | undefined) => {
+    setSelectedNodeId(prev => {
+      if (!prev) return null;
+      const label = result?.visualization?.nodes
+        ?.find((n: any) => n.id === prev)?.data?.label;
+      if (!label) return null;
+      const match = next?.visualization?.nodes
+        ?.find((n: any) => n.data?.label === label);
+      return match ? match.id : null;
+    });
+  };
+
+  /**
    * Re-analyze the PR that is open in the workspace, at its latest commit, and
    * adopt the result. This is the same call the board's Refresh makes — the
    * loop is worth having where the reviewer already is, rather than only on
@@ -138,6 +160,7 @@ export default function App() {
     setReanalyzing(true);
     try {
       const run = await reanalyze(prUrl, githubToken, result?.aiReviewRan === true);
+      remapSelection(run.data);
       adoptRun(run);
       addToHistory(prUrl, run.data);
       setActiveHistoryId(prUrl);

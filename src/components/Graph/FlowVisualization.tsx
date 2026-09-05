@@ -67,7 +67,7 @@ function FlowInner({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
-  const { getNodes, flowToScreenPosition, setCenter } = useReactFlow();
+  const { getNodes, flowToScreenPosition, setCenter, fitView } = useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   // Briefly highlighted node id, set when "Locate" is clicked from the
   // triage panel — gives a visible pulse so the reviewer can find it even
@@ -75,8 +75,25 @@ function FlowInner({
   const [locatedNodeId, setLocatedNodeId] = useState<string | null>(null);
 
 
+  // Without these two, React Flow would keep the copy it took on mount and a
+  // Refresh would leave stale badges on the graph while the triage list moved on.
   useEffect(() => { setNodes(nodes); }, [nodes, setNodes]);
   useEffect(() => { setEdges(edges); }, [edges, setEdges]);
+
+  // `fitView` on <ReactFlow> only runs at init. When a re-analysis changes
+  // WHICH nodes exist, the layout is recomputed and the old viewport can leave
+  // the new graph half off-screen — so refit, but only then. Refitting on every
+  // refresh would yank the view away from someone who had deliberately panned
+  // to a node, and a badge changing does not move anything.
+  const nodeIdsKey = nodes.map(n => n.id).join('|');
+  const previousNodeIds = useRef(nodeIdsKey);
+  useEffect(() => {
+    if (previousNodeIds.current === nodeIdsKey) return;
+    previousNodeIds.current = nodeIdsKey;
+    // Let the new nodes commit and be measured before framing them.
+    const id = requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+    return () => cancelAnimationFrame(id);
+  }, [nodeIdsKey, fitView]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges(eds => addEdge(connection, eds)),
