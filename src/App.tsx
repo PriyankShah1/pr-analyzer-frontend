@@ -235,7 +235,12 @@ export default function App() {
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
-          overflow: 'hidden',
+          // Scrolls rather than clips. Everything above the canvas is capped,
+          // so this rarely engages — but when a short window cannot fit the
+          // panels AND a usable canvas, reaching the canvas by scrolling beats
+          // it being cut off with no way down.
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}>
 
           {error && (
@@ -353,7 +358,12 @@ export default function App() {
               riskDiff={riskDiff}
               githubToken={githubToken}
               onBackToHistory={() => setView('history')}
-              onWriteComplete={handleAnalyze}
+              // Only a commit changes the code. Re-analyzing after a comment
+              // meant setResult(null), which unmounted the whole workspace —
+              // the white flash — to produce an identical result.
+              onWriteComplete={mode => {
+                if (mode === 'commit') void handleReanalyzeCurrent();
+              }}
               aiReviewRan={result.aiReviewRan}
               onRunInDepth={async () => {
                 setInDepthRunning(true);

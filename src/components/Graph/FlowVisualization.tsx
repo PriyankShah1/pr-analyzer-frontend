@@ -39,7 +39,7 @@ interface FlowVisualizationProps {
   riskDiff?:       RiskDiff | null;
   githubToken?:    string;
   onBackToHistory: () => void;
-  onWriteComplete?: () => void;
+  onWriteComplete?: (mode: 'comment' | 'commit') => void;
   aiReviewRan?: boolean;
   onRunInDepth?: () => void;
   inDepthRunning?: boolean;
@@ -258,7 +258,7 @@ function FlowInner({
         reanalyzing={reanalyzing}
         tokenOptional={tokenOptional}
         onNeedToken={onNeedToken}
-        onDone={() => onWriteComplete?.()}
+        onDone={mode => onWriteComplete?.(mode)}
         historyOpen={historyOpen}
         onToggleHistory={() => setHistoryOpen(o => !o)}
       />
@@ -284,7 +284,11 @@ function FlowInner({
           // refused to shrink, overflowed `main` (overflow:hidden) and the
           // graph was simply cut off at the fold. The canvas pans internally,
           // so it can take whatever height is left and still be usable.
-          flex: '1 1 0', minHeight: 0, position: 'relative', overflow: 'hidden',
+          // A floor, so the canvas is never squeezed to nothing by whatever is
+          // stacked above it. The column scrolls when the total exceeds the
+          // viewport, which is why this can no longer clip the way it did
+          // before the panels above were capped.
+          flex: '1 1 auto', minHeight: 340, position: 'relative', overflow: 'hidden',
           margin: '0 16px 16px', borderRadius: 10,
           border: '1px solid var(--bd)', background: 'var(--canvas)',
         }}

@@ -88,8 +88,12 @@ interface PRActionBarProps {
    *  anything?", which is the question Refresh provokes. */
   historyOpen?: boolean;
   onToggleHistory?: () => void;
-  /** Called once something has actually been written, to refresh the view. */
-  onDone: () => void;
+  /**
+   * Something was written. The MODE matters: committing a fix changes the code
+   * and needs a fresh analysis, posting a comment does not — re-analyzing after
+   * a comment blanked the whole workspace for no reason.
+   */
+  onDone: (mode: Mode) => void;
 }
 
 function btn(tone: 'ghost' | 'accent' | 'danger' | 'on'): React.CSSProperties {
@@ -202,13 +206,22 @@ export function PRActionBar({
           setError(why);
         }
       } else {
-        setPreview(null);
         setEdits({});
         setExcluded(new Set());
         setPosted(new Set());
         setDone(d.message ?? 'Done.');
         if (Array.isArray(d.errors) && d.errors.length > 0) setError(d.errors[0]);
-        onDone();
+        onDone(mode);
+
+        if (mode === 'comment') {
+          // Refresh the plan in place so the ON THIS PR list reflects what just
+          // happened. Re-running the ANALYSIS would be wrong twice over: the
+          // code has not changed, and it blanks the workspace on the way.
+          setPreview(null);
+          void call('comment', false);
+        } else {
+          setPreview(null);
+        }
       }
     } catch (e: any) {
       const data = e.response?.data;
@@ -251,11 +264,10 @@ export function PRActionBar({
   };
 
   const closePreview = () => {
-    // Anything posted one-by-one still needs the view refreshed on the way out.
-    const wrote = posted.size > 0;
+    // Nothing to re-analyze: posting comments does not change the code. The
+    // panel simply closes.
     setPreview(null);
     setPosted(new Set());
-    if (wrote) onDone();
   };
 
   if (!prUrl) return null;
@@ -384,6 +396,11 @@ export function PRActionBar({
             border: '1px solid var(--bd2)', borderRadius: 8, padding: 12,
             boxShadow: 'var(--shadow-lg)',
             display: 'flex', flexDirection: 'column', gap: 8,
+            // Capped and scrolled internally. The sections stack — message,
+            // what is on the PR, what will be resolved, the comment editors —
+            // and together they could take the entire column, squeezing the
+            // canvas to a sliver with no way to reach it.
+            maxHeight: 'min(46vh, 460px)', overflowY: 'auto',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', color: 'var(--t6)' }}>
