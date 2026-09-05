@@ -248,10 +248,20 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
             }}
           />
         </div>
-        <span style={{ fontSize: 11, color: 'var(--t6)', lineHeight: 1.5 }}>
-          Kept for this browser tab only — cleared when you close it. Never written
-          to disk, never logged, never sent anywhere except GitHub.
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: 11, color: 'var(--t6)', lineHeight: 1.5 }}>
+            Kept for this browser tab only — cleared when you close it. Never written
+            to disk, never logged, never sent anywhere except GitHub.
+          </span>
+          {/* Stated up front because the failure is silent and the setting is
+              counter-intuitive: a fine-grained token scoped to "Public
+              repositories" is read-only, and GitHub shows no Repository
+              permissions section for it at all. */}
+          <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t7)', lineHeight: 1.5 }}>
+            To post comments: fine-grained token → "Only select repositories" → Pull
+            requests: Read and write. ("Public repositories" access is read-only.)
+          </span>
+        </div>
       </div>
     )}
     </>
