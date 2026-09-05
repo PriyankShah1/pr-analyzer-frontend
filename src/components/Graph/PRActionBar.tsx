@@ -50,6 +50,9 @@ interface OnPREntry {
   status: 'commented' | 'resolved';
   canResolve: boolean;
   stillFound: boolean;
+  /** Body was edited to read "Resolved" by an older version, but GitHub still
+   *  considers the thread open. Shown as open, because GitHub is the truth. */
+  legacyResolvedNote?: boolean;
 }
 
 interface Preview {
@@ -581,12 +584,25 @@ export function PRActionBar({
                           {e.title}
                         </span>
 
-                        {/* Whether the analyzer still sees it. A finding that
-                            is gone from the code but whose thread is still open
-                            is exactly what wants resolving. */}
+                        {/* Say where each row stands, because "open" alone
+                            does not distinguish a real outstanding problem from
+                            one that is fixed but never closed off. */}
                         {!isResolved && !e.stillFound && (
                           <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--ok)' }}>
-                            no longer in the code
+                            fixed — not closed yet
+                          </span>
+                        )}
+                        {!isResolved && e.stillFound && (
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}>
+                            still in the code
+                          </span>
+                        )}
+                        {e.legacyResolvedNote && (
+                          <span
+                            title="An older version edited this comment to say Resolved without resolving the thread. GitHub still shows it open."
+                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t6)' }}
+                          >
+                            thread still open
                           </span>
                         )}
 
@@ -601,15 +617,27 @@ export function PRActionBar({
                           </a>
                         )}
 
+                        {/* Offered ONLY when the analyzer can no longer find
+                            the problem. Closing a thread on something still
+                            broken would record it as handled, which is a claim
+                            about the code rather than about the thread. */}
                         {!isResolved && e.canResolve && (
                           <button
                             onClick={() => resolveOne(e.fingerprint)}
                             disabled={busy !== null || needsToken}
-                            title="Resolve this conversation on GitHub"
+                            title="Resolve this conversation on GitHub — the analyzer no longer finds this problem"
                             style={{ ...btn('ghost'), fontSize: 9, padding: '2px 7px' }}
                           >
                             {working ? 'resolving…' : 'Mark resolved'}
                           </button>
+                        )}
+                        {!isResolved && !e.canResolve && e.stillFound && (
+                          <span
+                            title="Fix it first. If you disagree with the finding, resolve the thread on GitHub."
+                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t7)', padding: '2px 7px' }}
+                          >
+                            not fixed
+                          </span>
                         )}
                       </div>
                     );
