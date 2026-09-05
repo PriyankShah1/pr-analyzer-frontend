@@ -83,6 +83,9 @@ export function PRActionBar({
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   // Fingerprints already posted individually during this preview.
   const [posted, setPosted] = useState<Set<string>>(new Set());
+  // Per-row failures, so a comment GitHub rejected can be retried on its own
+  // rather than forcing a fresh dry run of all of them.
+  const [failed, setFailed] = useState<Record<string, string>>({});
 
   // Only anchored findings have a verified position — to comment on or patch.
   const anchored = risks.filter(r => r.anchored);
@@ -127,6 +130,7 @@ export function PRActionBar({
 
       if (!confirm) {
         setPosted(new Set());
+        setFailed({});
         setPreview({
           mode,
           message: d.message ?? 'Nothing to do.',
@@ -139,16 +143,18 @@ export function PRActionBar({
         // having posted only a fallback summary (a stale position, say), and
         // marking the row "posted" then would claim an inline comment exists
         // on GitHub when it does not.
+        const fp = only[0];
         if ((d.posted?.postedInline ?? 0) > 0) {
+          setFailed(prev => { const n = { ...prev }; delete n[fp]; return n; });
           // Keep the panel open so the rest can be handled individually —
           // closing here would make posting three comments mean three dry runs.
           setPosted(prev => new Set(prev).add(only[0]));
           if (Array.isArray(d.errors) && d.errors.length > 0) setError(d.errors[0]);
         } else {
-          setError(
-            (Array.isArray(d.errors) && d.errors[0])
-            || 'GitHub accepted the request but recorded no inline comment. Nothing was posted.',
-          );
+          const why = (Array.isArray(d.errors) && d.errors[0])
+            || 'GitHub accepted the request but recorded no inline comment. Nothing was posted.';
+          setFailed(prev => ({ ...prev, [fp]: why }));
+          setError(why);
         }
       } else {
         setPreview(null);
@@ -161,10 +167,10 @@ export function PRActionBar({
       }
     } catch (e: any) {
       const data = e.response?.data;
-      setError(
-        [data?.error ?? e.message ?? 'Request failed', data?.detail]
-          .filter(Boolean).join(' — '),
-      );
+      const msg = [data?.error ?? e.message ?? 'Request failed', data?.detail]
+        .filter(Boolean).join(' — ');
+      setError(msg);
+      if (only) setFailed(prev => ({ ...prev, [only[0]]: msg }));
     } finally {
       setBusy(null);
     }
@@ -313,12 +319,17 @@ export function PRActionBar({
                   const value = edits[c.fingerprint] ?? c.defaultDetail ?? '';
                   const changed = value.trim() !== (c.defaultDetail ?? '').trim();
                   const posting = busy === `one:${c.fingerprint}`;
+                  const rowFailed = failed[c.fingerprint];
 
                   return (
                     <div key={c.fingerprint} style={{
                       display: 'flex', flexDirection: 'column', gap: 5,
                       background: 'var(--code)',
-                      border: `1px solid ${isPosted ? 'var(--ok)' : on ? 'var(--bd4)' : 'var(--bd2)'}`,
+                      border: `1px solid ${
+                        rowFailed ? 'var(--sev1)'
+                        : isPosted ? 'var(--ok)'
+                        : on ? 'var(--bd4)' : 'var(--bd2)'
+                      }`,
                       borderRadius: 6, padding: '8px 9px',
                       opacity: isPosted ? 0.75 : on ? 1 : 0.55,
                     }}>
@@ -362,15 +373,35 @@ export function PRActionBar({
                           <button
                             onClick={() => call('comment', true, [c.fingerprint])}
                             disabled={busy !== null || needsToken}
-                            title={needsToken ? 'Needs a GitHub token — a comment must have an author' : 'Post just this comment'}
-                            style={{ ...btn('danger'), fontSize: 9.5, padding: '3px 8px' }}
+                            title={needsToken
+                              ? 'Needs a GitHub token — a comment must have an author'
+                              : rowFailed
+                                ? 'Try posting this comment again'
+                                : 'Post just this comment'}
+                            style={{
+                              ...btn(rowFailed ? 'ghost' : 'danger'),
+                              fontSize: 9.5, padding: '3px 8px',
+                              ...(rowFailed ? { color: 'var(--sev1)', borderColor: 'var(--sev1)' } : {}),
+                            }}
                           >
-                            {posting ? 'posting…' : 'Post'}
+                            {posting ? 'posting…' : rowFailed ? '↻ Retry' : 'Post'}
                           </button>
                         )}
                       </div>
 
                       <div style={{ fontSize: 11.5, color: 'var(--t1)', lineHeight: 1.4 }}>{c.title}</div>
+
+                      {/* The reason lives on the row that failed, not only in
+                          the panel-wide error, so it is obvious WHICH comment
+                          did not land when several were posted in a row. */}
+                      {rowFailed && (
+                        <div style={{
+                          fontFamily: MONO, fontSize: 9.5, color: 'var(--sev1)',
+                          lineHeight: 1.5, wordBreak: 'break-word',
+                        }}>
+                          not posted — {rowFailed}
+                        </div>
+                      )}
 
                       <textarea
                         value={value}
