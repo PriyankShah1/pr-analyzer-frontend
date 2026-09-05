@@ -144,8 +144,14 @@ export function PRActionBar({
         // marking the row "posted" then would claim an inline comment exists
         // on GitHub when it does not.
         const fp = only[0];
-        if ((d.posted?.postedInline ?? 0) > 0) {
+        // "Already on the PR" counts as done. The server only reports it after
+        // reading the marker back out of a real GitHub comment, so the comment
+        // demonstrably exists — treating that as a failure told the user their
+        // post had not worked when it had.
+        const wasAlready = (d.alreadyPosted ?? []).some((a: any) => a.fingerprint === fp);
+        if ((d.posted?.postedInline ?? 0) > 0 || wasAlready) {
           setFailed(prev => { const n = { ...prev }; delete n[fp]; return n; });
+          if (wasAlready) setDone('Already on this PR — not duplicated.');
           // Keep the panel open so the rest can be handled individually —
           // closing here would make posting three comments mean three dry runs.
           setPosted(prev => new Set(prev).add(only[0]));
