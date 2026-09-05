@@ -1,13 +1,216 @@
+/* src/index.css
+ *
+ * Design tokens, transcribed from the Claude Design handoff
+ * (`PR Analyzer Workspace.dc.html`).
+ *
+ * The design is DARK-FIRST: the bare `:root` block IS the dark palette, and
+ * `[data-theme="light"]` overrides it. That ordering is deliberate — it
+ * matches the mock, and it means a render before `useTheme` has stamped the
+ * attribute shows dark rather than an unstyled flash.
+ *
+ * Token naming follows the handoff verbatim (--t1..--t9, --bd..--bd5) rather
+ * than being "improved" into semantic names. Keeping the mock's vocabulary
+ * means any value here can be diffed against the source design directly,
+ * which matters more than prettier names when checking fidelity later.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root,
+[data-theme='dark'] {
+  --bg: #0b0d10;
+  --panel: #0e1116;
+  --sub: #0c0f14;
+  --input: #14181f;
+  --node: #13171e;
+  --node-on: #191f29;
+
+  --line: #171c24;
+  --chip: #161b23;
+  --code: #12161d;
+  --card: #101520;
+
+  --bd: #1e232b;
+  --bd2: #242b36;
+  --bd3: #232936;
+  --bd4: #1f242e;
+  --bd5: #2a313c;
+  --div: #1a1f27;
+  --bd-strong: #333d4d;
+  --edge: #2f3846;
+
+  --t1: #e6e9ef;
+  --t2: #c3cad6;
+  --t3: #a8b2c0;
+  --t4: #8b95a5;
+  --t5: #7d8797;
+  --t6: #616b7a;
+  --t7: #4a5462;
+  --t8: #3d4655;
+  --t9: #5d6775;
+
+  --sel-bg: #1b2230;
+  --sel-bd: #2c3646;
+  --info-bg: #0f1929;
+  --info-bd: #23344d;
+  --info-fg: #9cc4ff;
+
+  --violet-bg: #150f22;
+  --violet-bd: #33244a;
+
+  --warn-bg: #12100e;
+  --warn-bd: #2c2019;
+  --warn-t: #a89e97;
+  --on-accent: #06090d;
+  --scroll: #252b34;
+
+  --canvas: #0d1015;
+  --canvas-dot: #1a1f28;
+
+  /* Severity ramp, 1 = most severe. Maps to the Finding severity scale:
+     critical / high / medium / low. */
+  --sev1: #ff5a3d;
+  --sev2: #ff8a3d;
+  --sev3: #ffc93d;
+  --sev4: #9fb0c4;
+  --sev2-bg: rgba(255, 138, 61, 0.08);
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 26px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='light'] {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --sub: #fafbfc;
+  --input: #ffffff;
+  --node: #ffffff;
+  --node-on: #eef4ff;
+
+  --line: #eaeef3;
+  --chip: #f3f5f8;
+  --code: #f7f8fa;
+  --card: #ffffff;
+
+  --bd: #e2e6ec;
+  --bd2: #dde2ea;
+  --bd3: #e2e6ec;
+  --bd4: #e6eaf0;
+  --bd5: #dde2ea;
+  --div: #edf0f4;
+  --bd-strong: #b9c2ce;
+  --edge: #c2cad6;
+
+  --t1: #101419;
+  --t2: #333c48;
+  --t3: #4c5665;
+  --t4: #5f6a79;
+  --t5: #6d7787;
+  --t6: #8792a1;
+  --t7: #a3adba;
+  --t8: #b6bfca;
+  --t9: #8792a1;
+
+  --sel-bg: #eaf1ff;
+  --sel-bd: #c5daff;
+  --info-bg: #eff5ff;
+  --info-bd: #cddffb;
+  --info-fg: #1f5fd0;
+
+  --violet-bg: #f6f1ff;
+  --violet-bd: #dfd0f7;
+
+  --warn-bg: #fff8f2;
+  --warn-bd: #f2ddcb;
+  --warn-t: #7d6a5c;
+  --on-accent: #ffffff;
+  --scroll: #d2d8e0;
+
+  --canvas: #fbfcfd;
+  --canvas-dot: #e3e8ef;
+
+  --sev1: #c9331a;
+  --sev2: #a8500a;
+  --sev3: #7a5500;
+  --sev4: #5f6a79;
+  --sev2-bg: rgba(168, 80, 10, 0.09);
+
+  --shadow: 0 1px 3px rgba(16, 20, 25, 0.08);
+  --shadow-lg: 0 12px 28px rgba(16, 20, 25, 0.14);
+}
+
+/* ── Fixed accents ────────────────────────────────────────────────────────
+ * These do NOT flip with the theme in the design — they read acceptably on
+ * both grounds, and node-type identity should stay constant so a component is
+ * the same blue in light and dark.
+ */
+:root {
+  --accent: #4d8dff;
+  --accent-hover: #69a0ff;
+  --ok: #00c48c;
+  --violet: #b57cff;
+  --pink: #ff5cc8;
+
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, Helvetica, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
-  background: #f7f8fb;
+  padding: 0;
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
 }
 
 code {
-  background: #f0f1f3;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
+::selection {
+  background: rgba(77, 141, 255, 0.3);
+}
+
+/* Pulse used when the triage panel's LOCATE jumps to a node. */
+@keyframes pulseNode {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(77, 141, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(77, 141, 255, 0.45);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

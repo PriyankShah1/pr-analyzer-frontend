@@ -1,0 +1,78 @@
+// src/components/Graph/CodeFlowBar.tsx
+// The strip directly above the canvas: section label, edge legend, and the
+// Export PNG control.
+//
+// Export PNG lives here rather than in the global header (design amendment
+// A1) so the control sits with the thing it acts on — it exports this canvas,
+// and nothing else on the page.
+
+const MONO = 'var(--font-mono)';
+
+/** Matches the stroke treatment applied to edges in visualizer.js. */
+const LEGEND = [
+  { label: 'broken',         color: 'var(--sev1)', dashed: true },
+  { label: 'fetch',          color: 'var(--ok)',   dashed: true },
+  { label: 'props / render', color: 'var(--edge)', dashed: false },
+];
+
+interface CodeFlowBarProps {
+  onExportPNG: () => void;
+  exporting?: boolean;
+}
+
+export function CodeFlowBar({ onExportPNG, exporting = false }: CodeFlowBarProps) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '13px 16px 8px', flex: '0 0 auto',
+    }}>
+      <span style={{
+        fontFamily: MONO, fontSize: 10, letterSpacing: '0.09em', color: 'var(--t6)',
+      }}>
+        CODE FLOW
+      </span>
+
+      {/* The scope caveat from the mock. It also carries what the deleted left
+          rail used to say: this graph is application code, so an empty canvas
+          on a framework repo is a deliberate non-result, not a miss. */}
+      <span style={{
+        fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)',
+        border: '1px solid var(--bd2)', borderRadius: 4,
+        padding: '3px 7px', whiteSpace: 'nowrap',
+      }}>
+        application code only
+      </span>
+
+      <div style={{ flex: 1 }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
+        {LEGEND.map(l => (
+          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{
+              width: 14, height: 0,
+              borderTop: `1.4px ${l.dashed ? 'dashed' : 'solid'} ${l.color}`,
+            }} />
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t5)' }}>{l.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onExportPNG}
+        disabled={exporting}
+        title="Export the graph as a PNG"
+        style={{
+          marginLeft: 4,
+          fontFamily: MONO, fontSize: 10, color: 'var(--t3)',
+          border: '1px solid var(--bd2)', background: 'var(--input)',
+          borderRadius: 5, padding: '5px 9px',
+          cursor: exporting ? 'default' : 'pointer',
+          whiteSpace: 'nowrap', flexShrink: 0,
+          opacity: exporting ? 0.6 : 1,
+        }}
+      >
+        {exporting ? 'Exporting…' : 'Export PNG'}
+      </button>
+    </div>
+  );
+}

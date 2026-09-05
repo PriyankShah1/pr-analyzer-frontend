@@ -66,7 +66,7 @@ export function AIExplanation({
   return (
     <div style={{
       flex: 1, minWidth: 0,
-      borderRight: '1px solid var(--border)',
+      borderRight: '1px solid var(--bd)',
       display: 'flex', flexDirection: 'column',
     }}>
       {/* Panel header */}
@@ -75,9 +75,9 @@ export function AIExplanation({
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '7px 12px', border: 'none', cursor: 'pointer',
-          backgroundColor: 'var(--btn-bg)',
-          borderBottom: '1px solid var(--border)',
-          color: 'var(--text-muted)', fontSize: 10, fontWeight: 700,
+          backgroundColor: 'var(--chip)',
+          borderBottom: '1px solid var(--bd)',
+          color: 'var(--t6)', fontSize: 10, fontWeight: 700,
           textTransform: 'uppercase', letterSpacing: '0.06em',
         }}
       >
@@ -91,7 +91,7 @@ export function AIExplanation({
           <div style={{
             display: 'flex', gap: 4, padding: '6px 10px',
             flexWrap: 'wrap',
-            borderBottom: '1px solid var(--border)',
+            borderBottom: '1px solid var(--bd)',
           }}>
             {languages.map(lang => (
               <button
@@ -99,9 +99,9 @@ export function AIExplanation({
                 onClick={() => handleTabClick(lang.code)}
                 style={{
                   padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-                  border: `1px solid ${activeLang === lang.code ? 'var(--accent)' : 'var(--border)'}`,
-                  backgroundColor: activeLang === lang.code ? 'var(--accent)' : 'var(--btn-bg)',
-                  color: activeLang === lang.code ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${activeLang === lang.code ? 'var(--accent)' : 'var(--bd)'}`,
+                  backgroundColor: activeLang === lang.code ? 'var(--accent)' : 'var(--chip)',
+                  color: activeLang === lang.code ? '#fff' : 'var(--t3)',
                   cursor: 'pointer',
                 }}
               >
@@ -111,12 +111,12 @@ export function AIExplanation({
           </div>
 
           {/* Explanation — full height, no scroll cap, page scrolls instead */}
-          <div style={{ padding: '10px 12px', fontSize: 12, lineHeight: 1.7, color: 'var(--text)' }}>
+          <div style={{ padding: '10px 12px', fontSize: 12, lineHeight: 1.7, color: 'var(--t1)' }}>
             {loadingLang === activeLang && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>⏳ Generating...</div>
+              <div style={{ color: 'var(--t6)', fontStyle: 'italic' }}>⏳ Generating...</div>
             )}
             {errorLang === activeLang && loadingLang !== activeLang && (
-              <div style={{ color: 'var(--mismatch)' }}>
+              <div style={{ color: 'var(--sev1)' }}>
                 ⚠️ Failed.{' '}
                 <button
                   onClick={() => fetchExplanation(activeLang)}
@@ -133,7 +133,7 @@ export function AIExplanation({
               <p style={{ margin: 0 }}>{explanations[activeLang]}</p>
             )}
             {loadingLang !== activeLang && errorLang !== activeLang && !explanations[activeLang] && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>
+              <div style={{ color: 'var(--t6)', fontStyle: 'italic', fontSize: 11 }}>
                 Click a language tab to generate the explanation.
               </div>
             )}
