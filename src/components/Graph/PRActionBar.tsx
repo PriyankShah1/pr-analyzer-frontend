@@ -37,6 +37,8 @@ interface Resolution {
   fingerprint: string;
   title: string;
   path: string | null;
+  /** Direct link to the comment on GitHub. */
+  url?: string | null;
 }
 
 interface Preview {
@@ -46,6 +48,9 @@ interface Preview {
   /** Comments already on the PR whose finding is now fixed — these get edited
    *  in place to "Resolved". A write with nothing to select. */
   resolutions: Resolution[];
+  /** Already marked resolved on an earlier run — shown so the claim is
+   *  checkable, since an edited inline comment is easy to lose in a long diff. */
+  alreadyResolved: Resolution[];
   detail: string[];
   rejected: Array<{ fingerprint: string; reason: string }>;
 }
@@ -151,6 +156,7 @@ export function PRActionBar({
           message: d.message ?? 'Nothing to do.',
           comments: mode === 'comment' ? (d.plan?.inlineComments ?? []) : [],
           resolutions: mode === 'comment' ? (d.plan?.resolutions ?? []) : [],
+          alreadyResolved: mode === 'comment' ? (d.plan?.alreadyResolved ?? []) : [],
           detail: mode === 'commit' ? (d.patches ?? []).map((p: any) => `${p.file} — ${p.title}`) : [],
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
@@ -481,6 +487,42 @@ export function PRActionBar({
               </div>
             )}
 
+            {/* Already done on an earlier run. Listed with links because an
+                edited inline comment lives on the Files-changed tab and is
+                genuinely hard to find among a long diff — "3 already marked
+                resolved" was a claim with nowhere to go. */}
+            {preview.mode === 'comment' && preview.alreadyResolved.length > 0 && (
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 5,
+                background: 'var(--code)', border: '1px solid var(--bd4)',
+                borderRadius: 6, padding: '9px 10px',
+              }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t6)' }}>
+                  ALREADY MARKED RESOLVED ON THIS PR ({preview.alreadyResolved.length})
+                </div>
+                {preview.alreadyResolved.map(r => (
+                  <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                    <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
+                    <span style={{
+                      fontSize: 11.5, color: 'var(--t4)', lineHeight: 1.5,
+                      flex: 1, minWidth: 0, textDecoration: 'line-through',
+                    }}>
+                      {r.title || r.fingerprint}
+                    </span>
+                    {r.url
+                      ? <a href={r.url} target="_blank" rel="noreferrer"
+                          style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                          view on GitHub →
+                        </a>
+                      : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
+                  </div>
+                ))}
+                <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
+                  These are inline review comments, so they appear on the PR's Files changed tab.
+                </div>
+              </div>
+            )}
+
             {/* What will be EDITED on the PR, not posted. A reviewer is about
                 to authorise changes to comments already published under their
                 name, so the panel names them rather than saying "3". */}
@@ -500,9 +542,12 @@ export function PRActionBar({
                     <span style={{ fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.5, flex: 1, minWidth: 0 }}>
                       {r.title || r.fingerprint}
                     </span>
-                    {r.path && (
-                      <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>
-                    )}
+                    {r.url
+                      ? <a href={r.url} target="_blank" rel="noreferrer"
+                          style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                          view on GitHub →
+                        </a>
+                      : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
                   </div>
                 ))}
                 <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
