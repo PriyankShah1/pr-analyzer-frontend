@@ -597,6 +597,18 @@ export function PRActionBar({
                             still in the code
                           </span>
                         )}
+                        {/* Closed on GitHub while the problem is still in
+                            the code. Says so rather than letting a resolved
+                            thread read as a fixed finding — the thread is
+                            GitHub's business, the code is ours. */}
+                        {isResolved && e.stillFound && (
+                          <span
+                            title="This conversation is resolved on GitHub, but the analyzer still finds the problem in the code."
+                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}
+                          >
+                            closed, but still in the code
+                          </span>
+                        )}
                         {e.legacyResolvedNote && (
                           <span
                             title="An older version edited this comment to say Resolved without resolving the thread. GitHub still shows it open."
