@@ -33,10 +33,19 @@ interface PlannedComment {
   defaultDetail: string;
 }
 
+interface Resolution {
+  fingerprint: string;
+  title: string;
+  path: string | null;
+}
+
 interface Preview {
   mode: Mode;
   message: string;
   comments: PlannedComment[];
+  /** Comments already on the PR whose finding is now fixed — these get edited
+   *  in place to "Resolved". A write with nothing to select. */
+  resolutions: Resolution[];
   detail: string[];
   rejected: Array<{ fingerprint: string; reason: string }>;
 }
@@ -141,6 +150,7 @@ export function PRActionBar({
           mode,
           message: d.message ?? 'Nothing to do.',
           comments: mode === 'comment' ? (d.plan?.inlineComments ?? []) : [],
+          resolutions: mode === 'comment' ? (d.plan?.resolutions ?? []) : [],
           detail: mode === 'commit' ? (d.patches ?? []).map((p: any) => `${p.file} — ${p.title}`) : [],
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
@@ -300,9 +310,21 @@ export function PRActionBar({
         const selectedCount = preview.mode === 'comment'
           ? remaining.filter(c => !excluded.has(c.fingerprint)).length
           : preview.detail.length;
-        const confirmLabel = preview.mode === 'comment'
-          ? `Post ${selectedCount} together`
-          : 'Confirm & commit';
+
+        // Marking a fixed finding's comment as resolved IS a write, even with
+        // nothing to post. Counting only postable comments disabled the button
+        // whenever every current finding was already commented on — which is
+        // precisely the state a PR reaches once the fixes land, so the whole
+        // resolve-in-place path was unreachable.
+        const resolveCount = preview.mode === 'comment' ? preview.resolutions.length : 0;
+        const nothingToWrite = selectedCount === 0 && resolveCount === 0;
+
+        const confirmLabel = preview.mode !== 'comment'
+          ? 'Confirm & commit'
+          : [
+              selectedCount > 0 ? `Post ${selectedCount}` : null,
+              resolveCount > 0 ? `mark ${resolveCount} resolved` : null,
+            ].filter(Boolean).join(' · ') || 'Nothing to write';
 
         return (
           <div style={{
@@ -459,6 +481,36 @@ export function PRActionBar({
               </div>
             )}
 
+            {/* What will be EDITED on the PR, not posted. A reviewer is about
+                to authorise changes to comments already published under their
+                name, so the panel names them rather than saying "3". */}
+            {preview.mode === 'comment' && preview.resolutions.length > 0 && (
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 5,
+                background: 'var(--code)', border: '1px solid var(--ok)',
+                borderRadius: 6, padding: '9px 10px',
+              }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
+                  FIXED SINCE THE LAST REVIEW — {preview.resolutions.length} comment
+                  {preview.resolutions.length === 1 ? '' : 's'} will be edited to “✅ Resolved”
+                </div>
+                {preview.resolutions.map(r => (
+                  <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                    <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.5, flex: 1, minWidth: 0 }}>
+                      {r.title || r.fingerprint}
+                    </span>
+                    {r.path && (
+                      <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>
+                    )}
+                  </div>
+                ))}
+                <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
+                  The original wording is kept in a collapsed section on each comment.
+                </div>
+              </div>
+            )}
+
             {preview.detail.length > 0 && (
               <div style={{
                 display: 'flex', flexDirection: 'column', gap: 3,
@@ -493,8 +545,8 @@ export function PRActionBar({
                   only option. */}
               <button
                 onClick={() => call(preview.mode, true)}
-                disabled={busy !== null || selectedCount === 0}
-                style={{ ...btn('danger'), opacity: selectedCount === 0 ? 0.5 : 1 }}
+                disabled={busy !== null || nothingToWrite}
+                style={{ ...btn('danger'), opacity: nothingToWrite ? 0.5 : 1 }}
               >
                 {busy === preview.mode ? 'writing…' : confirmLabel}
               </button>
