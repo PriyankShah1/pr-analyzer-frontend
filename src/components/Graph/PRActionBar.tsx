@@ -41,9 +41,22 @@ interface Resolution {
   url?: string | null;
 }
 
+interface OnPREntry {
+  fingerprint: string;
+  title: string;
+  path: string;
+  line: number | null;
+  url?: string | null;
+  status: 'commented' | 'resolved';
+  canResolve: boolean;
+  stillFound: boolean;
+}
+
 interface Preview {
   mode: Mode;
   message: string;
+  /** The standing record: every finding this review has put on the PR. */
+  onPR: OnPREntry[];
   comments: PlannedComment[];
   /** Comments already on the PR whose finding is now fixed — these get edited
    *  in place to "Resolved". A write with nothing to select. */
@@ -157,6 +170,7 @@ export function PRActionBar({
           comments: mode === 'comment' ? (d.plan?.inlineComments ?? []) : [],
           resolutions: mode === 'comment' ? (d.plan?.resolutions ?? []) : [],
           alreadyResolved: mode === 'comment' ? (d.plan?.alreadyResolved ?? []) : [],
+          onPR: mode === 'comment' ? (d.onPR ?? []) : [],
           detail: mode === 'commit' ? (d.patches ?? []).map((p: any) => `${p.file} — ${p.title}`) : [],
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
@@ -199,6 +213,35 @@ export function PRActionBar({
         .filter(Boolean).join(' — ');
       setError(msg);
       if (only) setFailed(prev => ({ ...prev, [only[0]]: msg }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * Resolve one conversation by hand.
+   *
+   * Distinct from the analyzer-driven path: that one resolves what the code
+   * proves is gone, this records a human judgement — "fixed differently", or
+   * "not a problem here". Both end at GitHub's own Resolve conversation.
+   */
+  const resolveOne = async (fp: string) => {
+    if (!prUrl) return;
+    setBusy(`resolve:${fp}`);
+    setError(null);
+    try {
+      await axios.post(`${API}/comment`, {
+        url: prUrl, token, confirm: true, resolveOnly: [fp],
+      });
+      setPreview(prev => prev && ({
+        ...prev,
+        onPR: prev.onPR.map(e => (
+          e.fingerprint === fp ? { ...e, status: 'resolved' as const, canResolve: false } : e
+        )),
+      }));
+    } catch (e: any) {
+      const data = e.response?.data;
+      setError([data?.error ?? e.message, data?.detail].filter(Boolean).join(' — '));
     } finally {
       setBusy(null);
     }
@@ -484,6 +527,94 @@ export function PRActionBar({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* The standing record. This is the answer to "what did I flag on
+                this PR?", which is a question asked days later, long after the
+                dry run that produced them. Each row can be resolved by hand —
+                a reviewer may have fixed it differently, or decided it does
+                not apply here, and neither is something the analyzer can
+                conclude on its own. */}
+            {preview.mode === 'comment' && preview.onPR.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8,
+                  fontFamily: MONO, fontSize: 10, color: 'var(--t6)',
+                }}>
+                  <span>ON THIS PR ({preview.onPR.length})</span>
+                  <span style={{ color: 'var(--t7)' }}>
+                    {preview.onPR.filter(e => e.status === 'resolved').length} resolved ·{' '}
+                    {preview.onPR.filter(e => e.status === 'commented').length} open
+                  </span>
+                </div>
+
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  maxHeight: 240, overflowY: 'auto',
+                  background: 'var(--code)', border: '1px solid var(--bd4)',
+                  borderRadius: 6,
+                }}>
+                  {preview.onPR.map(e => {
+                    const isResolved = e.status === 'resolved';
+                    const working = busy === `resolve:${e.fingerprint}`;
+                    return (
+                      <div key={e.fingerprint} style={{
+                        display: 'flex', alignItems: 'center', gap: 9,
+                        padding: '6px 9px', borderBottom: '1px solid var(--line)',
+                        opacity: isResolved ? 0.6 : 1,
+                      }}>
+                        <span style={{
+                          fontFamily: MONO, fontSize: 9,
+                          color: isResolved ? 'var(--ok)' : 'var(--sev2)',
+                          border: `1px solid ${isResolved ? 'var(--ok)' : 'var(--sev2)'}`,
+                          borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap',
+                        }}>
+                          {isResolved ? 'resolved' : 'open'}
+                        </span>
+
+                        <span style={{
+                          fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.45,
+                          flex: 1, minWidth: 0,
+                          textDecoration: isResolved ? 'line-through' : 'none',
+                        }}>
+                          {e.title}
+                        </span>
+
+                        {/* Whether the analyzer still sees it. A finding that
+                            is gone from the code but whose thread is still open
+                            is exactly what wants resolving. */}
+                        {!isResolved && !e.stillFound && (
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--ok)' }}>
+                            no longer in the code
+                          </span>
+                        )}
+
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)', whiteSpace: 'nowrap' }}>
+                          {e.path}{e.line ? `:${e.line}` : ''}
+                        </span>
+
+                        {e.url && (
+                          <a href={e.url} target="_blank" rel="noreferrer"
+                            style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                            view
+                          </a>
+                        )}
+
+                        {!isResolved && e.canResolve && (
+                          <button
+                            onClick={() => resolveOne(e.fingerprint)}
+                            disabled={busy !== null || needsToken}
+                            title="Resolve this conversation on GitHub"
+                            style={{ ...btn('ghost'), fontSize: 9, padding: '2px 7px' }}
+                          >
+                            {working ? 'resolving…' : 'Mark resolved'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
