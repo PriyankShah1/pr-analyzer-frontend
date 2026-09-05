@@ -18,7 +18,6 @@
 import { useState } from 'react';
 import type { Edge } from 'reactflow';
 import type { Finding, RiskDiff } from '../../types/risk';
-import { ReviewHistory } from './ReviewHistory';
 
 const MONO = 'var(--font-mono)';
 
@@ -188,16 +187,15 @@ interface TriagePanelProps {
   prUrl?: string;
   githubToken?: string;
   onWriteComplete?: () => void;
+  /** Opens the Review history panel in the PR action bar. */
+  onShowHistory?: () => void;
 }
-
-type Tab = 'issues' | 'history';
 
 export function TriagePanel({
   edges, risks = [], riskDiff, nodes = [], onLocateNode,
-  prUrl, githubToken = '', onWriteComplete,
+  prUrl, githubToken = '', onWriteComplete, onShowHistory,
 }: TriagePanelProps) {
   const [open, setOpen] = useState(true);
-  const [tab, setTab] = useState<Tab>('issues');
 
   // Findings know a file; the graph knows node labels. Match them so a SQL or
   // AI finding in a file that IS on the graph can still offer Locate.
@@ -224,37 +222,16 @@ export function TriagePanel({
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px' }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_COLOR[items[0].severity] }} />
 
-        {/* Two views of the same PR: what is wrong NOW, and what each push
-            changed. The counts alone were not trackable — a reviewer needs to
-            know WHICH findings moved, not just how many. */}
-        {([
-          { key: 'issues'  as Tab, label: `TRIAGE ${items.length}` },
-          { key: 'history' as Tab, label: 'REVIEW HISTORY' },
-        ]).map(t => {
-          const active = tab === t.key && open;
-          return (
-            <button
-              key={t.key}
-              onClick={() => { setTab(t.key); setOpen(true); }}
-              style={{
-                fontFamily: MONO, fontSize: 10.5, fontWeight: 600,
-                letterSpacing: '0.08em', cursor: 'pointer',
-                background: 'transparent', border: 0, padding: '2px 0',
-                borderBottom: `2px solid ${active ? 'var(--sev2)' : 'transparent'}`,
-                color: active ? 'var(--sev2)' : 'var(--t6)',
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-
-        {tab === 'issues' && open && (
-          <span style={{ fontSize: 12, color: 'var(--warn-t)' }}>
-            ranked by severity
-            {items.some(i => i.nodeId) ? ' — click Locate to jump to the node' : ''}
-          </span>
-        )}
+        <span style={{
+          fontFamily: MONO, fontSize: 10.5, fontWeight: 600,
+          letterSpacing: '0.08em', color: 'var(--sev2)',
+        }}>
+          TRIAGE
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--warn-t)' }}>
+          {items.length} {items.length === 1 ? 'issue' : 'issues'}, ranked by severity
+          {items.some(i => i.nodeId) ? ' — click Locate to jump to the node' : ''}
+        </span>
 
         <div style={{ flex: 1 }} />
         <button
@@ -268,19 +245,7 @@ export function TriagePanel({
         </button>
       </div>
 
-      {open && tab === 'history' && (
-        /* Slightly taller than the issue list: this is a reading view, not a
-           scanning list, and a revision block is several lines tall. */
-        <div style={{
-          display: 'flex', flexDirection: 'column',
-          maxHeight: 'min(38vh, 400px)', overflowY: 'auto',
-          borderTop: '1px solid var(--line)', background: 'var(--panel)',
-        }}>
-          <ReviewHistory prUrl={prUrl} currentDiff={riskDiff} />
-        </div>
-      )}
-
-      {open && tab === 'issues' && (
+      {open && (
         /* Capped and scrolled INTERNALLY. Unbounded, a 16-issue list pushed the
            canvas entirely off-screen — the graph was only reachable by zooming
            the browser out. The cap is viewport-relative so a tall screen still
@@ -342,7 +307,7 @@ export function TriagePanel({
             </div>
           ))}
 
-          {riskDiff && <ReReviewStrip diff={riskDiff} onShowHistory={() => setTab('history')} />}
+          {riskDiff && <ReReviewStrip diff={riskDiff} onShowHistory={() => onShowHistory?.()} />}
         </div>
       )}
     </div>

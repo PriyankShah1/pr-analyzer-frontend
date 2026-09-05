@@ -16,6 +16,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import type { Finding } from '../../types/risk';
+import { ReviewHistory } from './ReviewHistory';
 
 const API = import.meta.env.VITE_API_URL;
 const MONO = 'var(--font-mono)';
@@ -53,6 +54,10 @@ interface PRActionBarProps {
   /** True for the demo PR, whose dry runs need no token. */
   tokenOptional?: boolean;
   onNeedToken?: () => void;
+  /** Review history lives beside Refresh: it answers "did my last push fix
+   *  anything?", which is the question Refresh provokes. */
+  historyOpen?: boolean;
+  onToggleHistory?: () => void;
   /** Called once something has actually been written, to refresh the view. */
   onDone: () => void;
 }
@@ -72,6 +77,7 @@ function btn(tone: 'ghost' | 'accent' | 'danger' | 'on'): React.CSSProperties {
 export function PRActionBar({
   prUrl, token, risks, aiReviewRan, onRunInDepth, inDepthRunning,
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
+  historyOpen, onToggleHistory,
 }: PRActionBarProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -254,10 +260,32 @@ export function PRActionBar({
           {reanalyzing ? 'Refreshing…' : 'Refresh'}
         </button>
 
+        {/* 5 — Review history. Next to Refresh on purpose: Refresh is what
+            produces a new revision, and this is where you read what it
+            changed. */}
+        <button
+          onClick={onToggleHistory}
+          title="Revision by revision: what each push fixed, what it left open, and what came back"
+          style={btn(historyOpen ? 'on' : 'ghost')}
+        >
+          <span>▤</span>
+          Review history
+        </button>
+
         <div style={{ flex: 1 }} />
 
         {done && <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>{done}</span>}
       </div>
+
+      {historyOpen && (
+        <div style={{
+          background: 'var(--card)', border: '1px solid var(--bd2)',
+          borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+          maxHeight: 'min(42vh, 440px)', overflowY: 'auto',
+        }}>
+          <ReviewHistory prUrl={prUrl} />
+        </div>
+      )}
 
       {error && (
         <div style={{

@@ -45,24 +45,34 @@ function Bucket({ label, color, findings, defaultOpen = false }: {
       <button
         onClick={() => setOpen(o => !o)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-          background: 'transparent', border: 0, padding: 0, textAlign: 'left',
-          fontFamily: MONO, fontSize: 10, color,
+          display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer',
+          background: 'transparent', border: 0, padding: '2px 0', textAlign: 'left',
+          fontSize: 12, color,
         }}
       >
-        <span style={{ width: 8, display: 'inline-block' }}>{open ? '▾' : '▸'}</span>
-        <span style={{ fontWeight: 600 }}>{findings.length}</span>
-        <span>{label}</span>
+        <span style={{ width: 9, display: 'inline-block', fontSize: 10 }}>{open ? '▾' : '▸'}</span>
+        <span style={{ fontWeight: 600 }}>{label}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, opacity: 0.8 }}>({findings.length})</span>
       </button>
 
       {open && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 16 }}>
           {findings.map(f => (
-            <div key={f.fingerprint} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-              <span style={{ fontSize: 11, color: 'var(--t2)', lineHeight: 1.5, minWidth: 0, flex: 1 }}>
+            <div
+              key={f.fingerprint}
+              style={{
+                display: 'flex', gap: 14, alignItems: 'baseline',
+                padding: '4px 0', borderBottom: '1px solid var(--line)',
+              }}
+            >
+              <span style={{
+                width: 4, height: 4, borderRadius: '50%', background: color,
+                flex: '0 0 4px', alignSelf: 'center', opacity: 0.7,
+              }} />
+              <span style={{ fontSize: 12.5, color: 'var(--t2)', lineHeight: 1.5, minWidth: 0, flex: 1 }}>
                 {f.title}
               </span>
-              <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)', flexShrink: 0 }}>
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--t6)', flexShrink: 0 }}>
                 {f.file}{f.line ? `:${f.line}` : ''}
               </span>
             </div>
@@ -77,51 +87,57 @@ function RevisionBlock({ rev, isLatest }: { rev: Revision; isLatest: boolean }) 
   const { diff, snapshot } = rev;
 
   const headline = diff.isFirstReview
-    ? `baseline — ${diff.counts.persisting} finding${diff.counts.persisting === 1 ? '' : 's'}`
+    ? `First review — ${diff.counts.persisting} finding${diff.counts.persisting === 1 ? '' : 's'} to start from`
     : [
-        diff.counts.regressed  > 0 ? `${diff.counts.regressed} regressed`   : null,
+        diff.counts.regressed  > 0 ? `${diff.counts.regressed} came back`   : null,
         diff.counts.introduced > 0 ? `${diff.counts.introduced} new`        : null,
         diff.counts.resolved   > 0 ? `${diff.counts.resolved} fixed`        : null,
         diff.counts.persisting > 0 ? `${diff.counts.persisting} still open` : null,
-      ].filter(Boolean).join(' · ') || 'no change';
+      ].filter(Boolean).join(' · ') || 'Nothing changed since the previous revision';
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 7,
-      padding: '10px 12px',
-      borderLeft: `2px solid ${isLatest ? 'var(--accent)' : 'var(--bd2)'}`,
+      display: 'flex', flexDirection: 'column', gap: 9,
+      padding: '13px 16px',
+      borderLeft: `3px solid ${isLatest ? 'var(--accent)' : 'var(--bd2)'}`,
       background: isLatest ? 'var(--sel-bg)' : 'transparent',
       borderRadius: '0 6px 6px 0',
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, color: 'var(--t2)' }}>
-          rev {rev.index}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--t1)' }}>
+          Revision {rev.index}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--accent)' }}>
+        <span style={{
+          fontFamily: MONO, fontSize: 11, color: 'var(--accent)',
+          background: 'var(--chip)', border: '1px solid var(--bd2)',
+          borderRadius: 4, padding: '2px 6px',
+        }}>
           {short(snapshot.sha)}
         </span>
         {!diff.isFirstReview && (
-          <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)' }}>
-            since {short(diff.previousSha)}
+          <span style={{ fontSize: 11.5, color: 'var(--t6)' }}>
+            compared with {short(diff.previousSha)}
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)' }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--t7)' }}>
           {relativeTime(snapshot.reviewedAt)}
         </span>
       </div>
 
-      <div style={{ fontSize: 11.5, color: 'var(--t3)' }}>{headline}</div>
+      {/* The one-line verdict for this push, stated before the detail so the
+          shape of the revision reads without expanding anything. */}
+      <div style={{ fontSize: 13, color: 'var(--t2)', fontWeight: 500 }}>{headline}</div>
 
       {/* Ordered by what a reviewer needs to know first. A risk that came back
           matters more than a new one, which matters more than progress. */}
-      <Bucket label="regressed — fixed earlier, back again" color="var(--sev1)"
+      <Bucket label="Came back — was fixed earlier" color="var(--sev1)"
         findings={diff.regressed} defaultOpen />
-      <Bucket label="new in this revision" color="var(--sev2)"
+      <Bucket label="New in this revision" color="var(--sev2)"
         findings={diff.introduced} defaultOpen />
-      <Bucket label="fixed in this revision" color="var(--ok)"
+      <Bucket label="Fixed in this revision" color="var(--ok)"
         findings={diff.resolved} defaultOpen={isLatest} />
-      <Bucket label="still open" color="var(--t5)" findings={diff.persisting} />
+      <Bucket label="Still open" color="var(--t5)" findings={diff.persisting} />
     </div>
   );
 }
@@ -166,13 +182,15 @@ export function ReviewHistory({ prUrl }: ReviewHistoryProps) {
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-        padding: '9px 13px', borderBottom: '1px solid var(--line)',
-        fontFamily: MONO, fontSize: 10, color: 'var(--t6)',
+        padding: '10px 16px', borderBottom: '1px solid var(--line)',
+        fontFamily: MONO, fontSize: 11, color: 'var(--t6)',
       }}>
-        <span>{total} revision{total === 1 ? '' : 's'} recorded</span>
-        <span style={{ color: 'var(--ok)' }}>{fixedAllTime} fixed and still fixed</span>
+        <span style={{ color: 'var(--t3)' }}>
+          {total} revision{total === 1 ? '' : 's'} reviewed
+        </span>
+        <span style={{ color: 'var(--ok)' }}>{fixedAllTime} fixed so far</span>
         <span style={{ color: 'var(--t5)' }}>
-          {latest.snapshot.findings.length} open at {short(latest.snapshot.sha)}
+          {latest.snapshot.findings.length} still open at {short(latest.snapshot.sha)}
         </span>
         <div style={{ flex: 1 }} />
         <span style={{ color: 'var(--t7)' }}>newest first</span>

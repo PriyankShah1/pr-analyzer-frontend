@@ -62,6 +62,9 @@ function FlowInner({
   selectedNodeId, onSelectNode, locateRequest,
 }: FlowVisualizationProps) {
   const [exporting, setExporting] = useState(false);
+  // Owned here so the triage strip's "which ones?" link and the action bar's
+  // Review history button open the same panel.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
   const { getNodes, flowToScreenPosition, setCenter } = useReactFlow();
@@ -239,6 +242,8 @@ function FlowInner({
         tokenOptional={tokenOptional}
         onNeedToken={onNeedToken}
         onDone={() => onWriteComplete?.()}
+        historyOpen={historyOpen}
+        onToggleHistory={() => setHistoryOpen(o => !o)}
       />
 
       <TriagePanel
@@ -248,6 +253,7 @@ function FlowInner({
         nodes={nodesState}
         onLocateNode={onLocateNode}
         prUrl={prUrl}
+        onShowHistory={() => setHistoryOpen(true)}
       />
 
       <CodeFlowBar onExportPNG={downloadAsPNG} exporting={exporting} />
