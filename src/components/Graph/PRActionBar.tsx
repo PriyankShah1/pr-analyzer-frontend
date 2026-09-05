@@ -135,20 +135,36 @@ export function PRActionBar({
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
       } else if (only) {
-        // One comment posted. Keep the panel open so the rest can be handled
-        // individually — closing it here would make posting three comments
-        // mean three separate dry runs.
-        setPosted(prev => new Set(prev).add(only[0]));
+        // Trust the server's COUNT, not the 2xx. A review can come back OK
+        // having posted only a fallback summary (a stale position, say), and
+        // marking the row "posted" then would claim an inline comment exists
+        // on GitHub when it does not.
+        if ((d.posted?.postedInline ?? 0) > 0) {
+          // Keep the panel open so the rest can be handled individually —
+          // closing here would make posting three comments mean three dry runs.
+          setPosted(prev => new Set(prev).add(only[0]));
+          if (Array.isArray(d.errors) && d.errors.length > 0) setError(d.errors[0]);
+        } else {
+          setError(
+            (Array.isArray(d.errors) && d.errors[0])
+            || 'GitHub accepted the request but recorded no inline comment. Nothing was posted.',
+          );
+        }
       } else {
         setPreview(null);
         setEdits({});
         setExcluded(new Set());
         setPosted(new Set());
         setDone(d.message ?? 'Done.');
+        if (Array.isArray(d.errors) && d.errors.length > 0) setError(d.errors[0]);
         onDone();
       }
     } catch (e: any) {
-      setError(e.response?.data?.error ?? e.message ?? 'Request failed');
+      const data = e.response?.data;
+      setError(
+        [data?.error ?? e.message ?? 'Request failed', data?.detail]
+          .filter(Boolean).join(' — '),
+      );
     } finally {
       setBusy(null);
     }
