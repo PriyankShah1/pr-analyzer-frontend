@@ -39,6 +39,40 @@ interface TriageItem {
 }
 
 /**
+ * Human label for a finding kind.
+ *
+ * These used to render as `kind.replace(/_/g,' ').toUpperCase()`, which put
+ * the internal identifier on screen: SELECT STAR, N PLUS ONE QUERY,
+ * DESTRUCTIVE WITHOUT WHERE. Those name the RULE, not the problem, and nobody
+ * outside this codebase says them. The badge is the first thing a reviewer's
+ * eye lands on, so it should use the words they would use.
+ *
+ * An unknown kind still falls back to the old transform — a new rule should
+ * look rough, not invisible.
+ */
+const KIND_LABEL: Record<string, string> = {
+  sql_injection_risk:          'SQL INJECTION',
+  destructive_without_where:   'NO WHERE CLAUSE',
+  select_star:                 'SELECT *',
+  leading_wildcard_like:       'SLOW LIKE',
+  function_on_filtered_column: 'UNINDEXED FILTER',
+  not_in_subquery:             'NOT IN + NULL',
+  implicit_join:               'IMPLICIT JOIN',
+  large_offset_pagination:     'SLOW PAGINATION',
+  order_by_without_limit:      'UNBOUNDED SORT',
+  n_plus_one_query:            'QUERY IN LOOP',
+  unbounded_orm_read:          'UNBOUNDED READ',
+  broken_dependency:           'BROKEN IMPORT',
+  prop_name_mismatch:          'PROP MISMATCH',
+  prop_type_mismatch:          'TYPE MISMATCH',
+  missing_hook_dependency:     'MISSING DEP',
+};
+
+function labelForKind(kind: string): string {
+  return KIND_LABEL[kind] ?? kind.replace(/_/g, ' ').toUpperCase();
+}
+
+/**
  * Graph-derived issues. These carry a node id, so they can be located.
  *
  * `nameOf` matters more than it looks: edge.source/edge.target are node IDs
@@ -112,7 +146,7 @@ function itemsFromEdges(edges: Edge[], nameOf: (id: string) => string): TriageIt
 function itemsFromFindings(findings: Finding[], nodeIdByFile: Map<string, string>): TriageItem[] {
   return findings.map(f => ({
     severity: (f.severityRank || 4) as 1 | 2 | 3 | 4,
-    kind: f.kind.replace(/_/g, ' ').toUpperCase(),
+    kind: labelForKind(f.kind),
     title: f.title,
     detail: f.suggestion ? `${f.detail} Fix: ${f.suggestion}` : f.detail,
     confidence: f.source === 'sql' ? 'certain' : `${Math.round((f.confidence ?? 0) * 100)}%`,
