@@ -5,6 +5,8 @@ import { FlowVisualization } from './components/Graph/FlowVisualization';
 import { DetailPanel }       from './components/Graph/DetailPanel';
 import { ErrorBanner }       from './components/Common/ErrorBanner';
 import { WarningBanner }     from './components/Common/WarningBanner';
+import { ErrorBoundary }     from './components/Common/ErrorBoundary';
+import { AnalyzingState }    from './components/Common/AnalyzingState';
 import type { WorkspaceView } from './components/Header/Header';
 import { HistoryBoard }      from './components/History/HistoryBoard';
 import type { RefreshOutcome } from './components/History/HistoryBoard';
@@ -14,6 +16,7 @@ import { useAnalyze }        from './hooks/useAnalyze';
 import { useAutoRefresh }    from './hooks/useAutoRefresh';
 import type { AnalysisResponse, PRHistoryItem } from './types';
 import { DEMO_PR_URL } from './constants';
+import { splitUrl } from './utils/runSummary';
 import './App.css';
 
 export default function App() {
@@ -343,6 +346,16 @@ export default function App() {
           overflowX: 'hidden',
         }}>
 
+          {/* Narrower than the root boundary in main.tsx: a crash in the
+              workspace should not take the header with it, so History and the
+              URL bar keep working and the user can move on instead of
+              reloading and losing their place. */}
+          <ErrorBoundary
+            area="the workspace"
+            recoverLabel="Back to history"
+            onRecover={() => { setView('history'); setSelectedNodeId(null); }}
+          >
+
           {error && (
             <ErrorBanner
               error={error}
@@ -359,6 +372,14 @@ export default function App() {
           <WarningBanner warnings={warnings} />
 
           {/* Empty state */}
+          {/* The column used to render nothing at all here. */}
+          {loading && (
+            <AnalyzingState
+              label={splitUrl(prUrl).repo !== prUrl ? `${splitUrl(prUrl).repo} ${splitUrl(prUrl).num}` : undefined}
+              inDepth={inDepthRunning}
+            />
+          )}
+
           {!result && !loading && !error && (
             <div style={{
               flex: 1,
@@ -491,6 +512,7 @@ export default function App() {
               aiExplanations={result.aiExplanations}
             />
           )}
+          </ErrorBoundary>
         </main>
 
         {result?.visualization && result.visualization.nodes.length > 0 && (

@@ -214,3 +214,23 @@ code {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Motion that cannot be turned off is an accessibility defect.
+ *
+ * §7.5 recorded this as done and it was not: nothing in the codebase read the
+ * preference, so the graph's entrance stagger, the animated problem edges, the
+ * locate pulse and the analysis spinner all ran regardless of the setting.
+ *
+ * Animations are reduced to a single immediate frame rather than removed, so
+ * anything that relies on an animation ending still gets its event.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
