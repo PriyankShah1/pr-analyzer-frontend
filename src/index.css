@@ -234,3 +234,47 @@ code {
     scroll-behavior: auto !important;
   }
 }
+
+/* Node and usage accents.
+ *
+ * These were 13 literal hex values inside CustomNode.tsx and DetailPanel.tsx,
+ * so they did not change with the theme. On the light canvas several of them
+ * — the green, the cyan, the yellow — sat near 2:1 against white as 12px
+ * glyph text, which is unreadable rather than merely subtle.
+ *
+ * Named by ROLE where one exists and by hue where it does not: a node's colour
+ * is a category marker, and inventing semantic names for twenty-three
+ * arbitrary categories would be worse than admitting they are just hues.
+ */
+:root, [data-theme="dark"] {
+  --n-blue:   #4d8dff;
+  --n-blue-2: #5b93f0;   /* was #3b7ae0 — 4.32:1 on the dark node, under 4.5 */
+  --n-violet: #b57cff;
+  --n-purple: #9b6bff;
+  --n-purple-2: #a273ee; /* was #8a4fe0 — 3.66:1, well under */
+  --n-green:  #00c48c;
+  --n-cyan:   #00b8d4;
+  --n-pink:   #ff5cc8;
+  --n-orange: #ff8a3d;
+  --n-yellow: #ffc93d;
+  --n-red:    #ff5a3d;
+  --n-grey:   #7d8797;
+  --n-muted:  #8b93a3;   /* was #6b7280 — 3.72:1 */
+}
+
+/* Darkened for contrast on the light canvas. Same hue, enough depth to read. */
+[data-theme="light"] {
+  --n-blue:   #1f5fd0;
+  --n-blue-2: #1a54ba;
+  --n-violet: #6d3bd4;
+  --n-purple: #5c3ec8;
+  --n-purple-2: #5433b8;
+  --n-green:  #067a5b;
+  --n-cyan:   #056b7d;
+  --n-pink:   #b3277f;
+  --n-orange: #a8500a;
+  --n-yellow: #7a5500;
+  --n-red:    #c9331a;
+  --n-grey:   #5f6a79;
+  --n-muted:  #5b616b;
+}

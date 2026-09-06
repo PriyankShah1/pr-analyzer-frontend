@@ -22,21 +22,21 @@ const MONO = 'var(--font-mono)';
 type Tab = 'trace' | 'ai' | 'skips';
 
 const TYPE_META: Record<string, { accent: string; icon: string; label: string }> = {
-  component:        { accent: '#4d8dff', icon: '⚛', label: 'component' },
-  hook:             { accent: '#b57cff', icon: '⚙', label: 'hook' },
-  api_call:         { accent: '#00c48c', icon: '→', label: 'api call' },
-  context_provider: { accent: '#ff5cc8', icon: '▣', label: 'provider' },
-  context_create:   { accent: '#9b6bff', icon: '◈', label: 'context' },
-  deleted:          { accent: '#6b7280', icon: '✗', label: 'deleted' },
-  broken:           { accent: '#ff5a3d', icon: '⚠', label: 'broken ref' },
+  component:        { accent: 'var(--n-blue)', icon: '⚛', label: 'component' },
+  hook:             { accent: 'var(--n-violet)', icon: '⚙', label: 'hook' },
+  api_call:         { accent: 'var(--n-green)', icon: '→', label: 'api call' },
+  context_provider: { accent: 'var(--n-pink)', icon: '▣', label: 'provider' },
+  context_create:   { accent: 'var(--n-purple)', icon: '◈', label: 'context' },
+  deleted:          { accent: 'var(--n-muted)', icon: '✗', label: 'deleted' },
+  broken:           { accent: 'var(--n-red)', icon: '⚠', label: 'broken ref' },
 };
 
 const USAGE_COLOR: Record<string, string> = {
-  jsx_prop: '#3b7ae0',
-  jsx_expression: '#8a4fe0',
+  jsx_prop: 'var(--n-blue-2)',
+  jsx_expression: 'var(--n-purple-2)',
   condition: 'var(--sev3)',
   assignment: 'var(--ok)',
-  property_access: '#ff5cc8',
+  property_access: 'var(--n-pink)',
   function_call: 'var(--sev2)',
 };
 
