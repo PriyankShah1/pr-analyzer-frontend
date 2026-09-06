@@ -68,7 +68,7 @@ export default function App() {
   const [autoMinutes, setAutoMinutes] = useState<number>(() => {
     try {
       const raw = Number(localStorage.getItem('pr-analyzer-auto-minutes'));
-      return [0, 15, 30].includes(raw) ? raw : 15;
+      return [0, 5, 15, 30].includes(raw) ? raw : 15;
     } catch { return 15; }
   });
   useEffect(() => {

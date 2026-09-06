@@ -868,7 +868,7 @@ export function PRActionBar({
             }}
           >
             <span>auto-check</span>
-            {[0, 15, 30].map(m => (
+            {[0, 5, 15, 30].map(m => (
               <button
                 key={m}
                 onClick={() => onAutoMinutesChange(m)}
