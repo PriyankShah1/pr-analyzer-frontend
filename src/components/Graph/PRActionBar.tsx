@@ -298,12 +298,26 @@ export function PRActionBar({
       await axios.post(`${API}/comment`, {
         url: prUrl, token, confirm: true, resolveOnly: [fp],
       });
-      setPreview(prev => prev && ({
-        ...prev,
-        onPR: prev.onPR.map(e => (
-          e.fingerprint === fp ? { ...e, status: 'resolved' as const, canResolve: false } : e
-        )),
-      }));
+      // Resolving one by hand has to leave the PLAN as well as the row.
+      // `resolutions` is a snapshot taken by the dry run, so without this the
+      // confirm button kept offering "mark 4 resolved" after one of the four
+      // had already been resolved.
+      setPreview(prev => {
+        if (!prev) return prev;
+        const done = prev.resolutions.find(r => r.fingerprint === fp);
+        return {
+          ...prev,
+          onPR: prev.onPR.map(e => (
+            e.fingerprint === fp ? { ...e, status: 'resolved' as const, canResolve: false } : e
+          )),
+          resolutions: prev.resolutions.filter(r => r.fingerprint !== fp),
+          // Moved rather than dropped, so it stays visible as done instead of
+          // vanishing from the panel entirely.
+          alreadyResolved: done && !prev.alreadyResolved.some(r => r.fingerprint === fp)
+            ? [...prev.alreadyResolved, done]
+            : prev.alreadyResolved,
+        };
+      });
     } catch (e: any) {
       const data = e.response?.data;
       setError([data?.error ?? e.message, data?.detail].filter(Boolean).join(' — '));
@@ -681,8 +695,8 @@ export function PRActionBar({
               borderRadius: 6, padding: '9px 10px',
             }}>
               <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
-                FIXED SINCE THE LAST REVIEW — {preview.resolutions.length} comment
-                {preview.resolutions.length === 1 ? '' : 's'} will be edited to “✅ Resolved”
+                FIXED SINCE THE LAST REVIEW — {preview.resolutions.length} conversation
+                {preview.resolutions.length === 1 ? '' : 's'} will be resolved on GitHub
               </div>
               {preview.resolutions.map(r => (
                 <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
@@ -698,8 +712,13 @@ export function PRActionBar({
                     : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
                 </div>
               ))}
+              {/* Describes what actually happens now. This used to promise the
+                  body would be rewritten and the original tucked into a
+                  <details>, which is what the tool did BEFORE it used GitHub's
+                  own resolve — copy left behind by the implementation change. */}
               <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
-                The original wording is kept in a collapsed section on each comment.
+                The comments are left exactly as they are; their threads are marked
+                resolved and collapse on the PR.
               </div>
             </div>
           )}
