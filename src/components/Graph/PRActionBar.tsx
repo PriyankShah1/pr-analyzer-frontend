@@ -17,11 +17,18 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import type { Finding } from '../../types/risk';
 import { ReviewHistory } from './ReviewHistory';
+import {
+  PR_BAR, PR_VIEWS,
+  type PRActionCtx, type PRViewCtx, type PRViewDef,
+} from './prViews';
 
 const API = import.meta.env.VITE_API_URL;
 const MONO = 'var(--font-mono)';
 
 type Mode = 'comment' | 'commit';
+
+/** null = the graph. Otherwise the bar has taken over the column. */
+export type PanelTab = 'post' | 'history' | 'fixes' | null;
 
 interface PlannedComment {
   fingerprint: string;
@@ -87,6 +94,10 @@ interface PRActionBarProps {
   /** Bumped when something elsewhere (the re-review strip) asks for the
    *  history. A counter rather than a boolean so repeat requests re-open it. */
   historyRequest?: number;
+  /** Which full-height view is open; null shows the graph. Owned by the parent
+   *  because opening one replaces the triage list and canvas. */
+  panelTab: PanelTab;
+  onPanelTabChange: (tab: PanelTab) => void;
   /** Minutes between automatic checks; 0 is off. */
   autoMinutes?: number;
   onAutoMinutesChange?: (minutes: number) => void;
@@ -116,9 +127,20 @@ function btn(tone: 'ghost' | 'accent' | 'danger' | 'on'): React.CSSProperties {
 export function PRActionBar({
   prUrl, token, risks, aiReviewRan, onRunInDepth, inDepthRunning,
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
-  historyRequest = 0,
+  historyRequest = 0, panelTab, onPanelTabChange,
   autoMinutes = 0, onAutoMinutesChange, changeNotice, onDismissNotice,
 }: PRActionBarProps) {
+  const setPanelTab = onPanelTabChange;
+
+  // Which registry view is open, and which of its tabs. panelTab carries both:
+  // a view id, or a tab key belonging to one. Kept as one value so the parent
+  // needs to know only "is a view open" to decide whether to show the graph.
+  const openView: PRViewDef | null = panelTab
+    ? PR_VIEWS.find(v => v.id === panelTab || v.tabs?.some(t => t.key === panelTab)) ?? null
+    : null;
+  const activeTab = openView?.tabs
+    ? (openView.tabs.some(t => t.key === panelTab) ? panelTab : openView.tabs[0].key)
+    : null;
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,20 +156,24 @@ export function PRActionBar({
   const [failed, setFailed] = useState<Record<string, string>>({});
 
   /**
-   * The review panel, or null when closed.
+   * Which full-height view the bar is showing, or null for the graph.
    *
-   * Posting comments and reading the revision history are two views of ONE
-   * thing — the review this tool keeps on the PR — so they share a button and
-   * a panel rather than sitting apart on the bar. Splitting them meant looking
-   * in two places for the same subject.
+   * Lifted to FlowVisualization because opening one REPLACES the triage list
+   * and canvas rather than sitting above them. A list of sixteen comments,
+   * each with an editable body, cannot be read through a 460px slot; and the
+   * graph and the comment list are wanted at different moments — one to
+   * understand the change, the other to manage the review — so neither needs
+   * to be squeezed for the other.
    */
-  const [panelTab, setPanelTab] = useState<'post' | 'history' | null>(null);
 
   // Asked for from elsewhere — the re-review strip's "which ones?". A counter,
   // so asking twice re-opens the panel rather than being swallowed by a
   // boolean that was already true.
   useEffect(() => {
-    if (historyRequest > 0) setPanelTab('history');
+    if (historyRequest > 0) onPanelTabChange('history');
+    // onPanelTabChange is a setter; re-running on its identity would reopen
+    // the panel on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyRequest]);
 
   // Only anchored findings have a verified position — to comment on or patch.
@@ -722,81 +748,110 @@ export function PRActionBar({
       );
   };
 
+  const actionCtx: PRActionCtx = {
+    aiReviewRan, inDepthRunning, reanalyzing,
+    runInDepth: onRunInDepth,
+    reanalyze: onReanalyze,
+  };
+
+  const viewCtx: PRViewCtx = {
+    prUrl, token, risks, anchored, needsToken, busy,
+    tab: activeTab,
+    setTab: tab => setPanelTab(tab as typeof panelTab),
+    dryRun: mode => call(mode, false),
+    requestToken: () => onNeedToken?.(),
+    slots: {
+      history: () => <ReviewHistory prUrl={prUrl} />,
+      commentPlan: () => (
+        needsToken ? (
+          <div style={{ padding: 14, fontSize: 12, color: 'var(--t4)', lineHeight: 1.6 }}>
+            A GitHub token is required to post — GitHub has no anonymous commenting,
+            so a comment needs an author. `public_repo` scope is enough for a public repo.
+          </div>
+        ) : preview?.mode === 'comment' ? renderPreview(false) : (
+          <div style={{ padding: 14, fontFamily: MONO, fontSize: 11, color: 'var(--t5)' }}>
+            {busy === 'comment' ? 'Checking what is on the PR…' : 'Nothing loaded — reopen to refresh.'}
+          </div>
+        )
+      ),
+      fixes: () => (
+        preview?.mode === 'commit' ? renderPreview(false) : (
+          <div style={{ padding: 14, fontFamily: MONO, fontSize: 11, color: 'var(--t5)' }}>
+            {busy === 'commit' ? 'Generating patches…'
+              : needsToken ? 'A token with Contents: write is required to commit a fix.'
+              : 'No patches loaded — reopen to generate them.'}
+          </div>
+        )
+      ),
+    },
+  };
+
+  /** Open a view, or close it if it is already the open one. */
+  const openViewTab = (id: string, tab?: string) => {
+    const def = PR_VIEWS.find(v => v.id === id);
+    if (!def) return;
+    if (!tab && openView?.id === id) { setPanelTab(null); return; }
+    const next = tab ?? def.tabs?.[0].key ?? def.id;
+    setPanelTab(next as typeof panelTab);
+    def.onOpen?.({ ...viewCtx, tab: next }, next);
+  };
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8,
-      padding: '10px 16px 0', flex: '0 0 auto',
+      padding: '10px 16px 0',
+      // Grows to fill the column when a view is open; otherwise it is just the
+      // row of buttons and stays out of the canvas's way.
+      flex: panelTab ? '1 1 auto' : '0 0 auto',
+      minHeight: 0,
+      paddingBottom: panelTab ? 16 : 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
 
-        {/* 1 — In-depth review. An analysis option, so it reads as a toggle
-            that has or has not been spent on this run. */}
-        <button
-          onClick={onRunInDepth}
-          disabled={aiReviewRan || inDepthRunning}
-          title={aiReviewRan
-            ? 'The in-depth review has already run for this analysis.'
-            : 'Reads the diff for bugs the static rules cannot see — a missing await, a null '
-              + 'dereference, a hardcoded secret, a route with no auth check. One extra model call.'}
-          style={{
-            ...btn(aiReviewRan ? 'on' : 'ghost'),
-            cursor: aiReviewRan || inDepthRunning ? 'default' : 'pointer',
-          }}
-        >
-          <span>{aiReviewRan ? '✓' : '⌕'}</span>
-          {inDepthRunning ? 'Reviewing…' : aiReviewRan ? 'In-depth review done' : 'In-depth review'}
-        </button>
+        {/* Rendered from PR_BAR in prViews.tsx, in the order declared there.
+            Nothing here knows what any particular button does — adding one is
+            an entry in that file, not an edit to this row. */}
+        {PR_BAR.map(entry => {
+          if (entry.kind === 'action') {
+            const disabled = entry.isDisabled?.(actionCtx) ?? false;
+            return (
+              <button
+                key={entry.id}
+                onClick={() => entry.run(actionCtx)}
+                disabled={disabled}
+                title={typeof entry.title === 'function' ? entry.title(actionCtx) : entry.title}
+                style={{
+                  ...btn(entry.isActive?.(actionCtx) ? 'on' : 'ghost'),
+                  cursor: disabled ? 'default' : 'pointer',
+                }}
+              >
+                <span>{typeof entry.icon === 'function' ? entry.icon(actionCtx) : entry.icon}</span>
+                {entry.label(actionCtx)}
+              </button>
+            );
+          }
 
-        {/* 2 — Review: what is on the PR, what to post, and how it changed.
-            Colour marks the OPEN panel; a permanently accented button reads as
-            already pressed. */}
-        <button
-          onClick={() => {
-            if (panelTab) { setPanelTab(null); return; }
-            setPanelTab('post');
-            if (needsToken) onNeedToken?.();
-            else void call('comment', false);
-          }}
-          disabled={busy !== null}
-          title="Comments on this PR: what is already there, what would be posted, and what each revision changed"
-          style={btn(panelTab ? 'on' : 'ghost')}
-        >
-          <span>❝</span>
-          {busy === 'comment' ? 'Checking…' : 'Review comments'}
-          {changeNotice && (
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--info-fg)', flex: '0 0 6px',
-            }} />
-          )}
-        </button>
-
-        {/* 3 — Suggest fixes */}
-        <button
-          onClick={() => (needsToken ? onNeedToken?.() : call('commit', false))}
-          disabled={busy !== null || anchored.length === 0}
-          title={anchored.length === 0
-            ? 'No finding has a verified position to patch'
-            : 'Generate real patches and preview the diffs before anything is committed'}
-          style={{
-            ...btn(preview?.mode === 'commit' ? 'on' : 'ghost'),
-            opacity: anchored.length === 0 ? 0.5 : 1,
-          }}
-        >
-          <span>⚒</span>
-          {busy === 'commit' ? 'Generating…' : 'Suggest fixes'}
-        </button>
-
-        {/* 4 — Refresh */}
-        <button
-          onClick={onReanalyze}
-          disabled={reanalyzing}
-          title="Re-analyze at the latest commit and compare against the last review — shows what got fixed, what is still open, and what came back"
-          style={{ ...btn('ghost'), cursor: reanalyzing ? 'default' : 'pointer' }}
-        >
-          <span>↻</span>
-          {reanalyzing ? 'Refreshing…' : 'Refresh'}
-        </button>
+          const isOpen = openView?.id === entry.id;
+          const unusable = entry.isDisabled?.(viewCtx) ?? false;
+          return (
+            <button
+              key={entry.id}
+              onClick={() => openViewTab(entry.id)}
+              disabled={unusable || busy !== null}
+              title={typeof entry.title === 'function' ? entry.title(viewCtx) : entry.title}
+              style={{ ...btn(isOpen ? 'on' : 'ghost'), opacity: unusable ? 0.5 : 1 }}
+            >
+              <span>{entry.icon}</span>
+              {entry.label(viewCtx)}
+              {(entry.hasBadge?.(viewCtx) || (entry.id === 'comments' && changeNotice)) && (
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: 'var(--info-fg)', flex: '0 0 6px',
+                }} />
+              )}
+            </button>
+          );
+        })}
 
         <div style={{ flex: 1 }} />
 
@@ -869,71 +924,60 @@ export function PRActionBar({
 
       {/* One panel, two tabs. Both answer questions about the same review
           record, so they share a frame instead of being two things to find. */}
-      {panelTab && (
+      {/* Panel body comes from the open view's own render(). Nothing here
+          branches on which view it is — that is the point of the registry. */}
+      {openView && (
         <div style={{
           background: 'var(--card)', border: '1px solid var(--bd2)',
           borderRadius: 8, boxShadow: 'var(--shadow-lg)',
           display: 'flex', flexDirection: 'column',
-          maxHeight: 'min(46vh, 460px)', overflow: 'hidden',
+          // Takes the column instead of being capped. Sixteen comments with
+          // editable bodies were unreadable through a 460px slot.
+          flex: 1, minHeight: 0, overflow: 'hidden',
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
             padding: '6px 8px', borderBottom: '1px solid var(--line)',
             flex: '0 0 auto',
           }}>
-            {([
-              { key: 'post' as const, label: 'Post comments' },
-              { key: 'history' as const, label: 'Review history' },
-            ]).map(t => (
-              <button
-                key={t.key}
-                onClick={() => {
-                  setPanelTab(t.key);
-                  // The post tab needs a fresh plan; the history tab reads
-                  // stored snapshots and needs no request.
-                  if (t.key === 'post' && !preview && !needsToken) void call('comment', false);
-                }}
-                style={{
-                  fontFamily: MONO, fontSize: 10.5, cursor: 'pointer',
-                  padding: '5px 10px', borderRadius: 5, border: 0,
-                  background: panelTab === t.key ? 'var(--sel-bg)' : 'transparent',
-                  color: panelTab === t.key ? 'var(--t1)' : 'var(--t6)',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
+            {openView.tabs
+              ? openView.tabs.map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => openViewTab(openView.id, t.key)}
+                    style={{
+                      fontFamily: MONO, fontSize: 10.5, cursor: 'pointer',
+                      padding: '5px 10px', borderRadius: 5, border: 0,
+                      background: activeTab === t.key ? 'var(--sel-bg)' : 'transparent',
+                      color: activeTab === t.key ? 'var(--t1)' : 'var(--t6)',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))
+              : (
+                <span style={{
+                  fontFamily: MONO, fontSize: 10.5, color: 'var(--t2)', padding: '5px 10px',
+                }}>
+                  {openView.label(viewCtx)}
+                </span>
+              )}
+
             <div style={{ flex: 1 }} />
             <button
               onClick={() => { setPanelTab(null); setPreview(null); setPosted(new Set()); }}
+              title="Back to the graph"
               style={{ ...btn('ghost'), fontSize: 9.5, padding: '3px 8px' }}
             >
-              Close
+              ← Back to graph
             </button>
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            {panelTab === 'history' && <ReviewHistory prUrl={prUrl} />}
-
-            {panelTab === 'post' && needsToken && (
-              <div style={{ padding: 14, fontSize: 12, color: 'var(--t4)', lineHeight: 1.6 }}>
-                A GitHub token is required to post — GitHub has no anonymous
-                commenting, so a comment needs an author. `public_repo` scope is
-                enough for a public repo.
-              </div>
-            )}
-
-            {panelTab === 'post' && !needsToken && !preview && (
-              <div style={{ padding: 14, fontFamily: MONO, fontSize: 11, color: 'var(--t5)' }}>
-                {busy === 'comment' ? 'Checking what is on the PR…' : 'Nothing loaded — reopen to refresh.'}
-              </div>
-            )}
-
-            {panelTab === 'post' && preview?.mode === 'comment' && renderPreview(false)}
+            {openView.render(viewCtx)}
           </div>
         </div>
       )}
-
       {error && (
         <div style={{
           fontFamily: MONO, fontSize: 10, color: 'var(--sev1)', lineHeight: 1.5,
@@ -942,7 +986,7 @@ export function PRActionBar({
         </div>
       )}
 
-      {preview?.mode === 'commit' && renderPreview(true)}
+
     </div>
   );
 }

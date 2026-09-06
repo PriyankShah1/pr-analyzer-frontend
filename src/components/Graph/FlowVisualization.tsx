@@ -11,7 +11,7 @@ import 'reactflow/dist/style.css';
 import { CustomNode }        from './CustomNode';
 import { RunHeader }          from './RunHeader';
 import { CodeFlowBar }        from './CodeFlowBar';
-import { PRActionBar } from './PRActionBar';
+import { PRActionBar, type PanelTab } from './PRActionBar';
 import { TriagePanel }        from './TriagePanel';
 import type { AnalysisFlow, AnalysisStats, Theme } from '../../types';
 import type { Finding, RiskDiff } from '../../types/risk';
@@ -73,6 +73,9 @@ function FlowInner({
   // after the panel has been closed, and a boolean already set to true would
   // swallow the second request.
   const [historyRequest, setHistoryRequest] = useState(0);
+  // Which view the action bar is showing. Owned here because opening one
+  // REPLACES the triage list and canvas rather than stacking above them.
+  const [panelTab, setPanelTab] = useState<PanelTab>(null);
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
   const { getNodes, flowToScreenPosition, setCenter, fitView } = useReactFlow();
@@ -268,12 +271,22 @@ function FlowInner({
         onNeedToken={onNeedToken}
         onDone={mode => onWriteComplete?.(mode)}
         historyRequest={historyRequest}
+        panelTab={panelTab}
+        onPanelTabChange={setPanelTab}
         autoMinutes={autoMinutes}
         onAutoMinutesChange={onAutoMinutesChange}
         changeNotice={changeNotice}
         onDismissNotice={onDismissNotice}
       />
 
+      {/* The graph half of the column. Hidden — not unmounted — while a view
+          is open: React Flow re-measures and re-runs its entrance animation on
+          remount, so unmounting would make every Close flash the graph back in
+          as if it had just been analyzed. */}
+      <div style={{
+        display: panelTab ? 'none' : 'flex',
+        flexDirection: 'column', flex: 1, minHeight: 0,
+      }}>
       <TriagePanel
         edges={edgesState}
         risks={risks}
@@ -325,6 +338,7 @@ function FlowInner({
           />
           <Controls showInteractive={false} />
         </ReactFlow>
+      </div>
       </div>
 
 
