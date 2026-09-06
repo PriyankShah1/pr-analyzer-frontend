@@ -77,6 +77,9 @@ interface Preview {
   /** True when confirming would put a summary on the PR — including restoring
    *  one that was deleted. Counts as a write on its own. */
   willPostSummary: boolean;
+  /** How many summary comments the PR carries. More than one is a leftover
+   *  from before summaries were refreshed in place. */
+  summaryCount: number;
   detail: string[];
   rejected: Array<{ fingerprint: string; reason: string }>;
 }
@@ -231,6 +234,7 @@ export function PRActionBar({
           alreadyResolved: mode === 'comment' ? (d.plan?.alreadyResolved ?? []) : [],
           onPR: mode === 'comment' ? (d.onPR ?? []) : [],
           willPostSummary: Boolean(d.plan?.counts?.willPostSummary),
+          summaryCount: Number(d.summaryCount ?? 0),
           detail: mode === 'commit' ? (d.patches ?? []).map((p: any) => `${p.file} — ${p.title}`) : [],
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
