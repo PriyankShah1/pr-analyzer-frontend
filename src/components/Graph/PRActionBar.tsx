@@ -110,6 +110,9 @@ interface PRActionBarProps {
   /** Set when an automatic check found a new commit. */
   changeNotice?: { sha: string; summary: string; at: number } | null;
   onDismissNotice?: () => void;
+  /** Bumped when a run is adopted. An open dry run describes the state BEFORE
+   *  the refresh, so it is re-fetched rather than left to mislead. */
+  dataVersion?: number;
   /**
    * Something was written. The MODE matters: committing a fix changes the code
    * and needs a fresh analysis, posting a comment does not — re-analyzing after
@@ -135,6 +138,7 @@ export function PRActionBar({
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
   historyRequest = 0, panelTab, onPanelTabChange,
   autoMinutes = 0, onAutoMinutesChange, changeNotice, onDismissNotice,
+  dataVersion = 0,
 }: PRActionBarProps) {
   const setPanelTab = onPanelTabChange;
 
@@ -175,6 +179,17 @@ export function PRActionBar({
   // Asked for from elsewhere — the re-review strip's "which ones?". A counter,
   // so asking twice re-opens the panel rather than being swallowed by a
   // boolean that was already true.
+  // A refresh invalidates an open plan: it was computed against the previous
+  // revision, so its comment list and resolutions describe a PR that has moved.
+  useEffect(() => {
+    if (dataVersion === 0) return;
+    if (panelTab === 'post' && !needsToken) void call('comment', false);
+    if (panelTab === 'fixes' && !needsToken) void call('commit', false);
+    // Only the version matters; re-running on the other values would refetch
+    // on every keystroke in a comment editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataVersion]);
+
   useEffect(() => {
     if (historyRequest > 0) onPanelTabChange('history');
     // onPanelTabChange is a setter; re-running on its identity would reopen
@@ -795,7 +810,7 @@ export function PRActionBar({
     dryRun: mode => call(mode, false),
     requestToken: () => onNeedToken?.(),
     slots: {
-      history: () => <ReviewHistory prUrl={prUrl} />,
+      history: () => <ReviewHistory prUrl={prUrl} refreshKey={dataVersion} />,
       commentPlan: () => (
         needsToken ? (
           <div style={{ padding: 14, fontSize: 12, color: 'var(--t4)', lineHeight: 1.6 }}>

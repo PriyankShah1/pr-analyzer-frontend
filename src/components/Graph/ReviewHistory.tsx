@@ -144,11 +144,15 @@ function RevisionBlock({ rev, isLatest }: { rev: Revision; isLatest: boolean }) 
 
 interface ReviewHistoryProps {
   prUrl?: string;
+  /** Changes when a new revision has been recorded. Without it this memo keys
+   *  only on the URL, so a refresh that stored a new snapshot left the history
+   *  showing the revisions from before it. */
+  refreshKey?: number;
   /** The diff for the run currently on screen, which may not be recorded yet. */
   currentDiff?: RiskDiff | null;
 }
 
-export function ReviewHistory({ prUrl }: ReviewHistoryProps) {
+export function ReviewHistory({ prUrl, refreshKey = 0 }: ReviewHistoryProps) {
   const revisions = useMemo<Revision[]>(() => {
     const ids = prUrl ? parseRepoAndNumber(prUrl) : null;
     if (!ids) return [];
@@ -163,7 +167,7 @@ export function ReviewHistory({ prUrl }: ReviewHistoryProps) {
         { sha: snapshot.sha, findings: snapshot.findings },
       ),
     }));
-  }, [prUrl]);
+  }, [prUrl, refreshKey]);
 
   if (revisions.length === 0) {
     return (

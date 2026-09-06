@@ -413,11 +413,13 @@ interface DetailPanelProps {
   stats?: AnalysisStats;
   codeContext?: string;
   aiExplanations?: Record<string, string>;
+  /** Head SHA, so explanations cache against the revision they describe. */
+  prHeadSha?: string | null;
 }
 
 export function DetailPanel({
   selectedNode, edges, nodes = [], onLocateComponent,
-  prTitle, codeLanguage, flows, stats, codeContext, aiExplanations,
+  prTitle, codeLanguage, flows, stats, codeContext, aiExplanations, prHeadSha,
 }: DetailPanelProps) {
   const [tab, setTab] = useState<Tab>('trace');
 
@@ -539,6 +541,7 @@ export function DetailPanel({
                 stats={stats}
                 codeContext={codeContext}
                 initialExplanations={aiExplanations}
+                prHeadSha={prHeadSha}
               />
             : <Section last><div style={{ fontSize: 11.5, color: 'var(--t5)' }}>No explanation available for this run.</div></Section>
         )}

@@ -1,5 +1,6 @@
 // src/components/Graph/AIExplanation.tsx
 import { useState, useEffect, useCallback } from 'react';
+import { explanationsFor, putExplanation } from '../../services/explanationCache';
 import axios from 'axios';
 import type { AnalysisFlow, AnalysisStats, ExplanationLanguage } from '../../types';
 
@@ -12,14 +13,22 @@ interface AIExplanationProps {
   stats:         AnalysisStats;
   codeContext?:  string;
   initialExplanations?: Record<string, string>;
+  /** Head SHA of the analyzed revision. Explanations are cached against it,
+   *  since a new commit means the old summary no longer describes the diff. */
+  prHeadSha?: string | null;
 }
 
 export function AIExplanation({
-  prTitle, codeLanguage, flows, stats, codeContext, initialExplanations,
+  prTitle, codeLanguage, flows, stats, codeContext, initialExplanations, prHeadSha,
 }: AIExplanationProps) {
   const [languages, setLanguages]       = useState<ExplanationLanguage[]>([]);
   const [activeLang, setActiveLang]     = useState<string>('en');
-  const [explanations, setExplanations] = useState<Record<string, string>>(initialExplanations || {});
+  // Seeded from the cache as well as the analysis, so a language fetched
+  // earlier in the session is still here after this component was unmounted
+  // and rebuilt — which used to cost another model call each time.
+  const [explanations, setExplanations] = useState<Record<string, string>>(
+    () => ({ ...explanationsFor(prHeadSha), ...(initialExplanations || {}) }),
+  );
   const [loadingLang, setLoadingLang]   = useState<string | null>(null);
   const [errorLang, setErrorLang]       = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState(false);
@@ -47,6 +56,7 @@ export function AIExplanation({
       const res = await axios.post(`${API}/explain`, {
         language: langCode, prTitle, codeLanguage, flows, stats, codeContext,
       });
+      putExplanation(prHeadSha, langCode, res.data.explanation);
       setExplanations(prev => ({ ...prev, [langCode]: res.data.explanation }));
     } catch {
       setErrorLang(langCode);

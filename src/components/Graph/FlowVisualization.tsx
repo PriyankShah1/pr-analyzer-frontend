@@ -47,6 +47,8 @@ interface FlowVisualizationProps {
   onAutoMinutesChange?: (minutes: number) => void;
   changeNotice?: { sha: string; summary: string; at: number } | null;
   onDismissNotice?: () => void;
+  /** Bumped when a run is adopted, so views over STORED data recompute. */
+  dataVersion?: number;
   tokenOptional?: boolean;
   onNeedToken?: () => void;
   onReanalyze?: () => void;
@@ -62,7 +64,7 @@ function FlowInner({
   codeLanguage, codeContext, aiExplanations,
   risks = [], riskDiff, githubToken, onBackToHistory, onWriteComplete,
   aiReviewRan, onRunInDepth, inDepthRunning, tokenOptional, onNeedToken,
-  autoMinutes, onAutoMinutesChange, changeNotice, onDismissNotice,
+  autoMinutes, onAutoMinutesChange, changeNotice, onDismissNotice, dataVersion,
   onReanalyze, reanalyzing,
   selectedNodeId, onSelectNode, locateRequest,
 }: FlowVisualizationProps) {
@@ -277,6 +279,7 @@ function FlowInner({
         onAutoMinutesChange={onAutoMinutesChange}
         changeNotice={changeNotice}
         onDismissNotice={onDismissNotice}
+        dataVersion={dataVersion}
       />
 
       {/* The graph half of the column. Hidden — not unmounted — while a view

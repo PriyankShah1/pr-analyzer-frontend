@@ -60,6 +60,11 @@ export default function App() {
   // Workspace = graph + panels for one PR. History = the board of past runs.
   const [view,            setView]            = useState<WorkspaceView>('workspace');
   const [reanalyzing,     setReanalyzing]     = useState(false);
+  // Bumped whenever a run is adopted. Anything reading STORED data — the
+  // review history's snapshots, an open dry run — keys off this, because a new
+  // snapshot does not change the props those views were computed from and they
+  // would otherwise keep showing the state before the refresh.
+  const [dataVersion,     setDataVersion]     = useState(0);
   // Set while the in-depth review is being fetched for the open PR.
   const [inDepthRunning,  setInDepthRunning]  = useState(false);
 
@@ -183,11 +188,30 @@ export default function App() {
     if (!prUrl.trim() || reanalyzing) return;
     setReanalyzing(true);
     try {
+      const seenSha = result?.prHeadSha ?? null;
       const run = await reanalyze(prUrl, githubToken, result?.aiReviewRan === true);
       remapSelection(run.data);
       adoptRun(run);
       addToHistory(prUrl, run.data);
       setActiveHistoryId(prUrl);
+      setDataVersion(v => v + 1);
+
+      // A manual Refresh deserves the same answer an automatic one gives. It
+      // used to update the graph and say nothing about what had moved, so the
+      // only way to learn a commit had landed was to wait for the timer.
+      const sha = run.data.prHeadSha ?? null;
+      if (sha && seenSha && sha !== seenSha) {
+        const c = run.diff?.counts;
+        const parts = c ? [
+          c.regressed  > 0 ? `${c.regressed} came back` : null,
+          c.introduced > 0 ? `${c.introduced} new`      : null,
+          c.resolved   > 0 ? `${c.resolved} fixed`      : null,
+        ].filter(Boolean) : [];
+        setChangeNotice({
+          sha, at: Date.now(),
+          summary: parts.length ? parts.join(' · ') : 'new commit, findings unchanged',
+        });
+      }
     } catch (err: any) {
       setError(err?.message || 'Re-analysis failed');
     } finally {
@@ -214,6 +238,7 @@ export default function App() {
       remapSelection(run.data);
       adoptRun(run);
       addToHistory(prUrl, run.data);
+      setDataVersion(v => v + 1);
 
       const c = run.diff?.counts;
       const parts = c ? [
@@ -450,6 +475,7 @@ export default function App() {
               onAutoMinutesChange={setAutoMinutes}
               changeNotice={changeNotice}
               onDismissNotice={() => setChangeNotice(null)}
+              dataVersion={dataVersion}
               onReanalyze={handleReanalyzeCurrent}
               reanalyzing={reanalyzing}
               tokenOptional={prUrl.trim() === DEMO_PR_URL}
@@ -479,6 +505,7 @@ export default function App() {
             stats={result.visualization.stats}
             codeContext={result.codeContext}
             aiExplanations={result.aiExplanations}
+            prHeadSha={result.prHeadSha}
           />
         )}
       </div>
