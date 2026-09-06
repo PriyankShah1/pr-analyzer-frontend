@@ -69,7 +69,10 @@ function FlowInner({
   const [exporting, setExporting] = useState(false);
   // Owned here so the triage strip's "which ones?" link and the action bar's
   // Review history button open the same panel.
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // A counter, not a flag: the triage strip may ask for the history again
+  // after the panel has been closed, and a boolean already set to true would
+  // swallow the second request.
+  const [historyRequest, setHistoryRequest] = useState(0);
   const [nodesState, setNodes, onNodesChange] = useNodesState(nodes);
   const [edgesState, setEdges, onEdgesChange] = useEdgesState(edges);
   const { getNodes, flowToScreenPosition, setCenter, fitView } = useReactFlow();
@@ -264,8 +267,7 @@ function FlowInner({
         tokenOptional={tokenOptional}
         onNeedToken={onNeedToken}
         onDone={mode => onWriteComplete?.(mode)}
-        historyOpen={historyOpen}
-        onToggleHistory={() => setHistoryOpen(o => !o)}
+        historyRequest={historyRequest}
         autoMinutes={autoMinutes}
         onAutoMinutesChange={onAutoMinutesChange}
         changeNotice={changeNotice}
@@ -279,7 +281,7 @@ function FlowInner({
         nodes={nodesState}
         onLocateNode={onLocateNode}
         prUrl={prUrl}
-        onShowHistory={() => setHistoryOpen(true)}
+        onShowHistory={() => setHistoryRequest(n => n + 1)}
       />
 
       <CodeFlowBar onExportPNG={downloadAsPNG} exporting={exporting} />

@@ -13,7 +13,7 @@
 // separate click confirms. There is no path from one click to a write, in this
 // component or in the backend (routes/comment.js, routes/commit.js).
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import type { Finding } from '../../types/risk';
 import { ReviewHistory } from './ReviewHistory';
@@ -84,10 +84,9 @@ interface PRActionBarProps {
   /** True for the demo PR, whose dry runs need no token. */
   tokenOptional?: boolean;
   onNeedToken?: () => void;
-  /** Review history lives beside Refresh: it answers "did my last push fix
-   *  anything?", which is the question Refresh provokes. */
-  historyOpen?: boolean;
-  onToggleHistory?: () => void;
+  /** Bumped when something elsewhere (the re-review strip) asks for the
+   *  history. A counter rather than a boolean so repeat requests re-open it. */
+  historyRequest?: number;
   /** Minutes between automatic checks; 0 is off. */
   autoMinutes?: number;
   onAutoMinutesChange?: (minutes: number) => void;
@@ -117,7 +116,7 @@ function btn(tone: 'ghost' | 'accent' | 'danger' | 'on'): React.CSSProperties {
 export function PRActionBar({
   prUrl, token, risks, aiReviewRan, onRunInDepth, inDepthRunning,
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
-  historyOpen, onToggleHistory,
+  historyRequest = 0,
   autoMinutes = 0, onAutoMinutesChange, changeNotice, onDismissNotice,
 }: PRActionBarProps) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -133,6 +132,23 @@ export function PRActionBar({
   // Per-row failures, so a comment GitHub rejected can be retried on its own
   // rather than forcing a fresh dry run of all of them.
   const [failed, setFailed] = useState<Record<string, string>>({});
+
+  /**
+   * The review panel, or null when closed.
+   *
+   * Posting comments and reading the revision history are two views of ONE
+   * thing — the review this tool keeps on the PR — so they share a button and
+   * a panel rather than sitting apart on the bar. Splitting them meant looking
+   * in two places for the same subject.
+   */
+  const [panelTab, setPanelTab] = useState<'post' | 'history' | null>(null);
+
+  // Asked for from elsewhere — the re-review strip's "which ones?". A counter,
+  // so asking twice re-opens the panel rather than being swallowed by a
+  // boolean that was already true.
+  useEffect(() => {
+    if (historyRequest > 0) setPanelTab('history');
+  }, [historyRequest]);
 
   // Only anchored findings have a verified position — to comment on or patch.
   const anchored = risks.filter(r => r.anchored);
@@ -279,6 +295,433 @@ export function PRActionBar({
 
   if (!prUrl) return null;
 
+  /**
+   * The dry-run preview. Extracted from the JSX so it can render inside
+   * the Post tab for a comment plan, and on its own for a commit plan —
+   * committing is a different action and does not belong under a tab
+   * about comments.
+   *
+   * `framed` is false inside the tab: the tab already supplies the card,
+   * and nesting a second bordered box inside it just looks like a bug.
+   */
+  const renderPreview = (framed: boolean) => {
+    if (!preview) return null;
+      const remaining = preview.comments.filter(c => !posted.has(c.fingerprint));
+      const selectedCount = preview.mode === 'comment'
+        ? remaining.filter(c => !excluded.has(c.fingerprint)).length
+        : preview.detail.length;
+
+      // Marking a fixed finding's comment as resolved IS a write, even with
+      // nothing to post. Counting only postable comments disabled the button
+      // whenever every current finding was already commented on — which is
+      // precisely the state a PR reaches once the fixes land, so the whole
+      // resolve-in-place path was unreachable.
+      const resolveCount = preview.mode === 'comment' ? preview.resolutions.length : 0;
+      const nothingToWrite = selectedCount === 0 && resolveCount === 0;
+
+      const confirmLabel = preview.mode !== 'comment'
+        ? 'Confirm & commit'
+        : [
+            selectedCount > 0 ? `Post ${selectedCount}` : null,
+            resolveCount > 0 ? `mark ${resolveCount} resolved` : null,
+          ].filter(Boolean).join(' · ') || 'Nothing to write';
+
+      return (
+        <div style={{
+          textAlign: 'left', padding: 12,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          ...(framed ? {
+            background: 'var(--card)', border: '1px solid var(--bd2)',
+            borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+            maxHeight: 'min(46vh, 460px)', overflowY: 'auto' as const,
+          } : {}),
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', color: 'var(--t6)' }}>
+              DRY RUN — nothing has been written yet
+            </span>
+            <div style={{ flex: 1 }} />
+            {posted.size > 0 && (
+              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
+                {posted.size} posted
+              </span>
+            )}
+          </div>
+
+          <div style={{ fontSize: 12, color: 'var(--t1)', lineHeight: 1.5 }}>{preview.message}</div>
+
+          {preview.mode === 'comment' && preview.comments.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => setExcluded(new Set())} disabled={excluded.size === 0}
+                style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}>
+                select all
+              </button>
+              <button onClick={() => setExcluded(new Set(preview.comments.map(c => c.fingerprint)))}
+                disabled={excluded.size === preview.comments.length}
+                style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}>
+                select none
+              </button>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t7)' }}>
+                Post individually, or tick several and post them together as one review.
+              </span>
+            </div>
+          )}
+
+          {preview.mode === 'comment' && preview.comments.length > 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8,
+              maxHeight: 320, overflowY: 'auto',
+            }}>
+              {preview.comments.map(c => {
+                const isPosted = posted.has(c.fingerprint);
+                const on = !excluded.has(c.fingerprint) && !isPosted;
+                const value = edits[c.fingerprint] ?? c.defaultDetail ?? '';
+                const changed = value.trim() !== (c.defaultDetail ?? '').trim();
+                const posting = busy === `one:${c.fingerprint}`;
+                const rowFailed = failed[c.fingerprint];
+
+                return (
+                  <div key={c.fingerprint} style={{
+                    display: 'flex', flexDirection: 'column', gap: 5,
+                    background: 'var(--code)',
+                    border: `1px solid ${
+                      rowFailed ? 'var(--sev1)'
+                      : isPosted ? 'var(--ok)'
+                      : on ? 'var(--bd4)' : 'var(--bd2)'
+                    }`,
+                    borderRadius: 6, padding: '8px 9px',
+                    opacity: isPosted ? 0.75 : on ? 1 : 0.55,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: isPosted ? 'default' : 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={isPosted}
+                          onChange={() => setExcluded(prev => {
+                            const next = new Set(prev);
+                            if (next.has(c.fingerprint)) next.delete(c.fingerprint);
+                            else next.add(c.fingerprint);
+                            return next;
+                          })}
+                          style={{ accentColor: 'var(--accent)', cursor: isPosted ? 'default' : 'pointer' }}
+                        />
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>
+                          {c.path}:{c.line ?? '?'}
+                        </span>
+                      </label>
+                      <div style={{ flex: 1 }} />
+                      {changed && !isPosted && (
+                        <button
+                          onClick={() => setEdits(p => {
+                            const next = { ...p };
+                            delete next[c.fingerprint];
+                            return next;
+                          })}
+                          style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}
+                        >
+                          reset
+                        </button>
+                      )}
+                      {/* Its own Post button, per your ask. Posts THIS comment
+                          and nothing else, and leaves the panel open so the
+                          rest can be handled one at a time. */}
+                      {isPosted ? (
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ok)' }}>posted ✓</span>
+                      ) : (
+                        <button
+                          onClick={() => call('comment', true, [c.fingerprint])}
+                          disabled={busy !== null || needsToken}
+                          title={needsToken
+                            ? 'Needs a GitHub token — a comment must have an author'
+                            : rowFailed
+                              ? 'Try posting this comment again'
+                              : 'Post just this comment'}
+                          style={{
+                            ...btn(rowFailed ? 'ghost' : 'danger'),
+                            fontSize: 9.5, padding: '3px 8px',
+                            ...(rowFailed ? { color: 'var(--sev1)', borderColor: 'var(--sev1)' } : {}),
+                          }}
+                        >
+                          {posting ? 'posting…' : rowFailed ? '↻ Retry' : 'Post'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: 11.5, color: 'var(--t1)', lineHeight: 1.4 }}>{c.title}</div>
+
+                    {/* The reason lives on the row that failed, not only in
+                        the panel-wide error, so it is obvious WHICH comment
+                        did not land when several were posted in a row. */}
+                    {rowFailed && (
+                      <div style={{
+                        fontFamily: MONO, fontSize: 9.5, color: 'var(--sev1)',
+                        lineHeight: 1.5, wordBreak: 'break-word',
+                      }}>
+                        not posted — {rowFailed}
+                      </div>
+                    )}
+
+                    <textarea
+                      value={value}
+                      disabled={!on}
+                      onChange={e => setEdits(p => ({ ...p, [c.fingerprint]: e.target.value }))}
+                      rows={3}
+                      maxLength={1000}
+                      spellCheck
+                      style={{
+                        width: '100%', resize: 'vertical',
+                        background: 'var(--input)', color: 'var(--t2)',
+                        border: `1px solid ${changed ? 'var(--info-bd)' : 'var(--bd2)'}`,
+                        borderRadius: 5, padding: '6px 7px',
+                        fontFamily: 'var(--font-sans)', fontSize: 11.5,
+                        lineHeight: 1.5, outline: 0,
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* The standing record. This is the answer to "what did I flag on
+              this PR?", which is a question asked days later, long after the
+              dry run that produced them. Each row can be resolved by hand —
+              a reviewer may have fixed it differently, or decided it does
+              not apply here, and neither is something the analyzer can
+              conclude on its own. */}
+          {preview.mode === 'comment' && preview.onPR.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{
+                display: 'flex', alignItems: 'baseline', gap: 8,
+                fontFamily: MONO, fontSize: 10, color: 'var(--t6)',
+              }}>
+                <span>ON THIS PR ({preview.onPR.length})</span>
+                <span style={{ color: 'var(--t7)' }}>
+                  {preview.onPR.filter(e => e.status === 'resolved').length} resolved ·{' '}
+                  {preview.onPR.filter(e => e.status === 'commented').length} open
+                </span>
+              </div>
+
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                maxHeight: 240, overflowY: 'auto',
+                background: 'var(--code)', border: '1px solid var(--bd4)',
+                borderRadius: 6,
+              }}>
+                {preview.onPR.map(e => {
+                  const isResolved = e.status === 'resolved';
+                  const working = busy === `resolve:${e.fingerprint}`;
+                  return (
+                    <div key={e.fingerprint} style={{
+                      display: 'flex', alignItems: 'center', gap: 9,
+                      padding: '6px 9px', borderBottom: '1px solid var(--line)',
+                      opacity: isResolved ? 0.6 : 1,
+                    }}>
+                      <span style={{
+                        fontFamily: MONO, fontSize: 9,
+                        color: isResolved ? 'var(--ok)' : 'var(--sev2)',
+                        border: `1px solid ${isResolved ? 'var(--ok)' : 'var(--sev2)'}`,
+                        borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap',
+                      }}>
+                        {isResolved ? 'resolved' : 'open'}
+                      </span>
+
+                      <span style={{
+                        fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.45,
+                        flex: 1, minWidth: 0,
+                        textDecoration: isResolved ? 'line-through' : 'none',
+                      }}>
+                        {e.title}
+                      </span>
+
+                      {/* Say where each row stands, because "open" alone
+                          does not distinguish a real outstanding problem from
+                          one that is fixed but never closed off. */}
+                      {!isResolved && !e.stillFound && (
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--ok)' }}>
+                          fixed — not closed yet
+                        </span>
+                      )}
+                      {!isResolved && e.stillFound && (
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}>
+                          still in the code
+                        </span>
+                      )}
+                      {/* Closed on GitHub while the problem is still in
+                          the code. Says so rather than letting a resolved
+                          thread read as a fixed finding — the thread is
+                          GitHub's business, the code is ours. */}
+                      {isResolved && e.stillFound && (
+                        <span
+                          title="This conversation is resolved on GitHub, but the analyzer still finds the problem in the code."
+                          style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}
+                        >
+                          closed, but still in the code
+                        </span>
+                      )}
+                      {e.legacyResolvedNote && (
+                        <span
+                          title="An older version edited this comment to say Resolved without resolving the thread. GitHub still shows it open."
+                          style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t6)' }}
+                        >
+                          thread still open
+                        </span>
+                      )}
+
+                      <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)', whiteSpace: 'nowrap' }}>
+                        {e.path}{e.line ? `:${e.line}` : ''}
+                      </span>
+
+                      {e.url && (
+                        <a href={e.url} target="_blank" rel="noreferrer"
+                          style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                          view
+                        </a>
+                      )}
+
+                      {/* Offered ONLY when the analyzer can no longer find
+                          the problem. Closing a thread on something still
+                          broken would record it as handled, which is a claim
+                          about the code rather than about the thread. */}
+                      {!isResolved && e.canResolve && (
+                        <button
+                          onClick={() => resolveOne(e.fingerprint)}
+                          disabled={busy !== null || needsToken}
+                          title="Resolve this conversation on GitHub — the analyzer no longer finds this problem"
+                          style={{ ...btn('ghost'), fontSize: 9, padding: '2px 7px' }}
+                        >
+                          {working ? 'resolving…' : 'Mark resolved'}
+                        </button>
+                      )}
+                      {!isResolved && !e.canResolve && e.stillFound && (
+                        <span
+                          title="Fix it first. If you disagree with the finding, resolve the thread on GitHub."
+                          style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t7)', padding: '2px 7px' }}
+                        >
+                          not fixed
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Already done on an earlier run. Listed with links because an
+              edited inline comment lives on the Files-changed tab and is
+              genuinely hard to find among a long diff — "3 already marked
+              resolved" was a claim with nowhere to go. */}
+          {preview.mode === 'comment' && preview.alreadyResolved.length > 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 5,
+              background: 'var(--code)', border: '1px solid var(--bd4)',
+              borderRadius: 6, padding: '9px 10px',
+            }}>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t6)' }}>
+                ALREADY MARKED RESOLVED ON THIS PR ({preview.alreadyResolved.length})
+              </div>
+              {preview.alreadyResolved.map(r => (
+                <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                  <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
+                  <span style={{
+                    fontSize: 11.5, color: 'var(--t4)', lineHeight: 1.5,
+                    flex: 1, minWidth: 0, textDecoration: 'line-through',
+                  }}>
+                    {r.title || r.fingerprint}
+                  </span>
+                  {r.url
+                    ? <a href={r.url} target="_blank" rel="noreferrer"
+                        style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                        view on GitHub →
+                      </a>
+                    : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
+                </div>
+              ))}
+              <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
+                These are inline review comments, so they appear on the PR's Files changed tab.
+              </div>
+            </div>
+          )}
+
+          {/* What will be EDITED on the PR, not posted. A reviewer is about
+              to authorise changes to comments already published under their
+              name, so the panel names them rather than saying "3". */}
+          {preview.mode === 'comment' && preview.resolutions.length > 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 5,
+              background: 'var(--code)', border: '1px solid var(--ok)',
+              borderRadius: 6, padding: '9px 10px',
+            }}>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
+                FIXED SINCE THE LAST REVIEW — {preview.resolutions.length} comment
+                {preview.resolutions.length === 1 ? '' : 's'} will be edited to “✅ Resolved”
+              </div>
+              {preview.resolutions.map(r => (
+                <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                  <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.5, flex: 1, minWidth: 0 }}>
+                    {r.title || r.fingerprint}
+                  </span>
+                  {r.url
+                    ? <a href={r.url} target="_blank" rel="noreferrer"
+                        style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
+                        view on GitHub →
+                      </a>
+                    : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
+                </div>
+              ))}
+              <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
+                The original wording is kept in a collapsed section on each comment.
+              </div>
+            </div>
+          )}
+
+          {preview.detail.length > 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 3,
+              maxHeight: 200, overflowY: 'auto',
+              background: 'var(--code)', border: '1px solid var(--bd4)',
+              borderRadius: 6, padding: '8px 9px',
+            }}>
+              {preview.detail.map((d, i) => (
+                <div key={i} style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t3)', lineHeight: 1.6 }}>{d}</div>
+              ))}
+            </div>
+          )}
+
+          {preview.rejected.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>
+                COULD NOT PATCH ({preview.rejected.length})
+              </div>
+              {preview.rejected.map((r, i) => (
+                <div key={i} style={{ fontSize: 10.5, color: 'var(--t5)', lineHeight: 1.5 }}>{r.reason}</div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            <button onClick={closePreview} style={btn('ghost')}>
+              {posted.size > 0 ? 'Close' : 'Cancel'}
+            </button>
+            {/* The bulk path is still here: several comments in ONE review
+                means the PR author gets one notification, not one per
+                finding. Posting individually is a deliberate choice, not the
+                only option. */}
+            <button
+              onClick={() => call(preview.mode, true)}
+              disabled={busy !== null || nothingToWrite}
+              style={{ ...btn('danger'), opacity: nothingToWrite ? 0.5 : 1 }}
+            >
+              {busy === preview.mode ? 'writing…' : confirmLabel}
+            </button>
+          </div>
+        </div>
+      );
+  };
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8,
@@ -304,20 +747,28 @@ export function PRActionBar({
           {inDepthRunning ? 'Reviewing…' : aiReviewRan ? 'In-depth review done' : 'In-depth review'}
         </button>
 
-        {/* 2 — Post comments */}
+        {/* 2 — Review: what is on the PR, what to post, and how it changed.
+            Colour marks the OPEN panel; a permanently accented button reads as
+            already pressed. */}
         <button
-          onClick={() => (needsToken ? onNeedToken?.() : call('comment', false))}
+          onClick={() => {
+            if (panelTab) { setPanelTab(null); return; }
+            setPanelTab('post');
+            if (needsToken) onNeedToken?.();
+            else void call('comment', false);
+          }}
           disabled={busy !== null}
-          title={needsToken
-            ? 'GitHub has no anonymous commenting — a comment needs an author, so a token is required even on a public repo. Read-only scope is not enough; `public_repo` is.'
-            : 'Preview the comments before anything is posted'}
-          // Neutral until it is actually doing something. Standing blue read as
-          // "already pressed" on a bar where nothing had been clicked yet;
-          // colour here should mean state, not decoration.
-          style={btn(preview?.mode === 'comment' ? 'on' : 'ghost')}
+          title="Comments on this PR: what is already there, what would be posted, and what each revision changed"
+          style={btn(panelTab ? 'on' : 'ghost')}
         >
           <span>❝</span>
-          {busy === 'comment' ? 'Checking…' : needsToken ? 'Post comments (add token)' : 'Post comments'}
+          {busy === 'comment' ? 'Checking…' : 'Review comments'}
+          {changeNotice && (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--info-fg)', flex: '0 0 6px',
+            }} />
+          )}
         </button>
 
         {/* 3 — Suggest fixes */}
@@ -345,24 +796,6 @@ export function PRActionBar({
         >
           <span>↻</span>
           {reanalyzing ? 'Refreshing…' : 'Refresh'}
-        </button>
-
-        {/* 5 — Review history. Next to Refresh on purpose: Refresh is what
-            produces a new revision, and this is where you read what it
-            changed. */}
-        <button
-          onClick={onToggleHistory}
-          title="Revision by revision: what each push fixed, what it left open, and what came back"
-          style={btn(historyOpen ? 'on' : 'ghost')}
-        >
-          <span>▤</span>
-          Review history
-          {changeNotice && (
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--info-fg)', flex: '0 0 6px',
-            }} />
-          )}
         </button>
 
         <div style={{ flex: 1 }} />
@@ -419,10 +852,10 @@ export function PRActionBar({
             New commit <code style={{ fontFamily: MONO }}>{changeNotice.sha.slice(0, 7)}</code> — {changeNotice.summary}
           </span>
           <button
-            onClick={onToggleHistory}
+            onClick={() => setPanelTab('history')}
             style={{ ...btn('ghost'), fontSize: 9.5, padding: '3px 8px' }}
           >
-            Review history
+            See what changed
           </button>
           <div style={{ flex: 1 }} />
           <button
@@ -434,13 +867,70 @@ export function PRActionBar({
         </div>
       )}
 
-      {historyOpen && (
+      {/* One panel, two tabs. Both answer questions about the same review
+          record, so they share a frame instead of being two things to find. */}
+      {panelTab && (
         <div style={{
           background: 'var(--card)', border: '1px solid var(--bd2)',
           borderRadius: 8, boxShadow: 'var(--shadow-lg)',
-          maxHeight: 'min(42vh, 440px)', overflowY: 'auto',
+          display: 'flex', flexDirection: 'column',
+          maxHeight: 'min(46vh, 460px)', overflow: 'hidden',
         }}>
-          <ReviewHistory prUrl={prUrl} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '6px 8px', borderBottom: '1px solid var(--line)',
+            flex: '0 0 auto',
+          }}>
+            {([
+              { key: 'post' as const, label: 'Post comments' },
+              { key: 'history' as const, label: 'Review history' },
+            ]).map(t => (
+              <button
+                key={t.key}
+                onClick={() => {
+                  setPanelTab(t.key);
+                  // The post tab needs a fresh plan; the history tab reads
+                  // stored snapshots and needs no request.
+                  if (t.key === 'post' && !preview && !needsToken) void call('comment', false);
+                }}
+                style={{
+                  fontFamily: MONO, fontSize: 10.5, cursor: 'pointer',
+                  padding: '5px 10px', borderRadius: 5, border: 0,
+                  background: panelTab === t.key ? 'var(--sel-bg)' : 'transparent',
+                  color: panelTab === t.key ? 'var(--t1)' : 'var(--t6)',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={() => { setPanelTab(null); setPreview(null); setPosted(new Set()); }}
+              style={{ ...btn('ghost'), fontSize: 9.5, padding: '3px 8px' }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {panelTab === 'history' && <ReviewHistory prUrl={prUrl} />}
+
+            {panelTab === 'post' && needsToken && (
+              <div style={{ padding: 14, fontSize: 12, color: 'var(--t4)', lineHeight: 1.6 }}>
+                A GitHub token is required to post — GitHub has no anonymous
+                commenting, so a comment needs an author. `public_repo` scope is
+                enough for a public repo.
+              </div>
+            )}
+
+            {panelTab === 'post' && !needsToken && !preview && (
+              <div style={{ padding: 14, fontFamily: MONO, fontSize: 11, color: 'var(--t5)' }}>
+                {busy === 'comment' ? 'Checking what is on the PR…' : 'Nothing loaded — reopen to refresh.'}
+              </div>
+            )}
+
+            {panelTab === 'post' && preview?.mode === 'comment' && renderPreview(false)}
+          </div>
         </div>
       )}
 
@@ -452,424 +942,7 @@ export function PRActionBar({
         </div>
       )}
 
-      {preview && (() => {
-        const remaining = preview.comments.filter(c => !posted.has(c.fingerprint));
-        const selectedCount = preview.mode === 'comment'
-          ? remaining.filter(c => !excluded.has(c.fingerprint)).length
-          : preview.detail.length;
-
-        // Marking a fixed finding's comment as resolved IS a write, even with
-        // nothing to post. Counting only postable comments disabled the button
-        // whenever every current finding was already commented on — which is
-        // precisely the state a PR reaches once the fixes land, so the whole
-        // resolve-in-place path was unreachable.
-        const resolveCount = preview.mode === 'comment' ? preview.resolutions.length : 0;
-        const nothingToWrite = selectedCount === 0 && resolveCount === 0;
-
-        const confirmLabel = preview.mode !== 'comment'
-          ? 'Confirm & commit'
-          : [
-              selectedCount > 0 ? `Post ${selectedCount}` : null,
-              resolveCount > 0 ? `mark ${resolveCount} resolved` : null,
-            ].filter(Boolean).join(' · ') || 'Nothing to write';
-
-        return (
-          <div style={{
-            textAlign: 'left', background: 'var(--card)',
-            border: '1px solid var(--bd2)', borderRadius: 8, padding: 12,
-            boxShadow: 'var(--shadow-lg)',
-            display: 'flex', flexDirection: 'column', gap: 8,
-            // Capped and scrolled internally. The sections stack — message,
-            // what is on the PR, what will be resolved, the comment editors —
-            // and together they could take the entire column, squeezing the
-            // canvas to a sliver with no way to reach it.
-            maxHeight: 'min(46vh, 460px)', overflowY: 'auto',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', color: 'var(--t6)' }}>
-                DRY RUN — nothing has been written yet
-              </span>
-              <div style={{ flex: 1 }} />
-              {posted.size > 0 && (
-                <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
-                  {posted.size} posted
-                </span>
-              )}
-            </div>
-
-            <div style={{ fontSize: 12, color: 'var(--t1)', lineHeight: 1.5 }}>{preview.message}</div>
-
-            {preview.mode === 'comment' && preview.comments.length > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setExcluded(new Set())} disabled={excluded.size === 0}
-                  style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}>
-                  select all
-                </button>
-                <button onClick={() => setExcluded(new Set(preview.comments.map(c => c.fingerprint)))}
-                  disabled={excluded.size === preview.comments.length}
-                  style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}>
-                  select none
-                </button>
-                <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t7)' }}>
-                  Post individually, or tick several and post them together as one review.
-                </span>
-              </div>
-            )}
-
-            {preview.mode === 'comment' && preview.comments.length > 0 && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 8,
-                maxHeight: 320, overflowY: 'auto',
-              }}>
-                {preview.comments.map(c => {
-                  const isPosted = posted.has(c.fingerprint);
-                  const on = !excluded.has(c.fingerprint) && !isPosted;
-                  const value = edits[c.fingerprint] ?? c.defaultDetail ?? '';
-                  const changed = value.trim() !== (c.defaultDetail ?? '').trim();
-                  const posting = busy === `one:${c.fingerprint}`;
-                  const rowFailed = failed[c.fingerprint];
-
-                  return (
-                    <div key={c.fingerprint} style={{
-                      display: 'flex', flexDirection: 'column', gap: 5,
-                      background: 'var(--code)',
-                      border: `1px solid ${
-                        rowFailed ? 'var(--sev1)'
-                        : isPosted ? 'var(--ok)'
-                        : on ? 'var(--bd4)' : 'var(--bd2)'
-                      }`,
-                      borderRadius: 6, padding: '8px 9px',
-                      opacity: isPosted ? 0.75 : on ? 1 : 0.55,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: isPosted ? 'default' : 'pointer', userSelect: 'none' }}>
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            disabled={isPosted}
-                            onChange={() => setExcluded(prev => {
-                              const next = new Set(prev);
-                              if (next.has(c.fingerprint)) next.delete(c.fingerprint);
-                              else next.add(c.fingerprint);
-                              return next;
-                            })}
-                            style={{ accentColor: 'var(--accent)', cursor: isPosted ? 'default' : 'pointer' }}
-                          />
-                          <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>
-                            {c.path}:{c.line ?? '?'}
-                          </span>
-                        </label>
-                        <div style={{ flex: 1 }} />
-                        {changed && !isPosted && (
-                          <button
-                            onClick={() => setEdits(p => {
-                              const next = { ...p };
-                              delete next[c.fingerprint];
-                              return next;
-                            })}
-                            style={{ ...btn('ghost'), fontSize: 9, padding: '2px 6px' }}
-                          >
-                            reset
-                          </button>
-                        )}
-                        {/* Its own Post button, per your ask. Posts THIS comment
-                            and nothing else, and leaves the panel open so the
-                            rest can be handled one at a time. */}
-                        {isPosted ? (
-                          <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ok)' }}>posted ✓</span>
-                        ) : (
-                          <button
-                            onClick={() => call('comment', true, [c.fingerprint])}
-                            disabled={busy !== null || needsToken}
-                            title={needsToken
-                              ? 'Needs a GitHub token — a comment must have an author'
-                              : rowFailed
-                                ? 'Try posting this comment again'
-                                : 'Post just this comment'}
-                            style={{
-                              ...btn(rowFailed ? 'ghost' : 'danger'),
-                              fontSize: 9.5, padding: '3px 8px',
-                              ...(rowFailed ? { color: 'var(--sev1)', borderColor: 'var(--sev1)' } : {}),
-                            }}
-                          >
-                            {posting ? 'posting…' : rowFailed ? '↻ Retry' : 'Post'}
-                          </button>
-                        )}
-                      </div>
-
-                      <div style={{ fontSize: 11.5, color: 'var(--t1)', lineHeight: 1.4 }}>{c.title}</div>
-
-                      {/* The reason lives on the row that failed, not only in
-                          the panel-wide error, so it is obvious WHICH comment
-                          did not land when several were posted in a row. */}
-                      {rowFailed && (
-                        <div style={{
-                          fontFamily: MONO, fontSize: 9.5, color: 'var(--sev1)',
-                          lineHeight: 1.5, wordBreak: 'break-word',
-                        }}>
-                          not posted — {rowFailed}
-                        </div>
-                      )}
-
-                      <textarea
-                        value={value}
-                        disabled={!on}
-                        onChange={e => setEdits(p => ({ ...p, [c.fingerprint]: e.target.value }))}
-                        rows={3}
-                        maxLength={1000}
-                        spellCheck
-                        style={{
-                          width: '100%', resize: 'vertical',
-                          background: 'var(--input)', color: 'var(--t2)',
-                          border: `1px solid ${changed ? 'var(--info-bd)' : 'var(--bd2)'}`,
-                          borderRadius: 5, padding: '6px 7px',
-                          fontFamily: 'var(--font-sans)', fontSize: 11.5,
-                          lineHeight: 1.5, outline: 0,
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* The standing record. This is the answer to "what did I flag on
-                this PR?", which is a question asked days later, long after the
-                dry run that produced them. Each row can be resolved by hand —
-                a reviewer may have fixed it differently, or decided it does
-                not apply here, and neither is something the analyzer can
-                conclude on its own. */}
-            {preview.mode === 'comment' && preview.onPR.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'baseline', gap: 8,
-                  fontFamily: MONO, fontSize: 10, color: 'var(--t6)',
-                }}>
-                  <span>ON THIS PR ({preview.onPR.length})</span>
-                  <span style={{ color: 'var(--t7)' }}>
-                    {preview.onPR.filter(e => e.status === 'resolved').length} resolved ·{' '}
-                    {preview.onPR.filter(e => e.status === 'commented').length} open
-                  </span>
-                </div>
-
-                <div style={{
-                  display: 'flex', flexDirection: 'column',
-                  maxHeight: 240, overflowY: 'auto',
-                  background: 'var(--code)', border: '1px solid var(--bd4)',
-                  borderRadius: 6,
-                }}>
-                  {preview.onPR.map(e => {
-                    const isResolved = e.status === 'resolved';
-                    const working = busy === `resolve:${e.fingerprint}`;
-                    return (
-                      <div key={e.fingerprint} style={{
-                        display: 'flex', alignItems: 'center', gap: 9,
-                        padding: '6px 9px', borderBottom: '1px solid var(--line)',
-                        opacity: isResolved ? 0.6 : 1,
-                      }}>
-                        <span style={{
-                          fontFamily: MONO, fontSize: 9,
-                          color: isResolved ? 'var(--ok)' : 'var(--sev2)',
-                          border: `1px solid ${isResolved ? 'var(--ok)' : 'var(--sev2)'}`,
-                          borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap',
-                        }}>
-                          {isResolved ? 'resolved' : 'open'}
-                        </span>
-
-                        <span style={{
-                          fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.45,
-                          flex: 1, minWidth: 0,
-                          textDecoration: isResolved ? 'line-through' : 'none',
-                        }}>
-                          {e.title}
-                        </span>
-
-                        {/* Say where each row stands, because "open" alone
-                            does not distinguish a real outstanding problem from
-                            one that is fixed but never closed off. */}
-                        {!isResolved && !e.stillFound && (
-                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--ok)' }}>
-                            fixed — not closed yet
-                          </span>
-                        )}
-                        {!isResolved && e.stillFound && (
-                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}>
-                            still in the code
-                          </span>
-                        )}
-                        {/* Closed on GitHub while the problem is still in
-                            the code. Says so rather than letting a resolved
-                            thread read as a fixed finding — the thread is
-                            GitHub's business, the code is ours. */}
-                        {isResolved && e.stillFound && (
-                          <span
-                            title="This conversation is resolved on GitHub, but the analyzer still finds the problem in the code."
-                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--sev2)' }}
-                          >
-                            closed, but still in the code
-                          </span>
-                        )}
-                        {e.legacyResolvedNote && (
-                          <span
-                            title="An older version edited this comment to say Resolved without resolving the thread. GitHub still shows it open."
-                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t6)' }}
-                          >
-                            thread still open
-                          </span>
-                        )}
-
-                        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)', whiteSpace: 'nowrap' }}>
-                          {e.path}{e.line ? `:${e.line}` : ''}
-                        </span>
-
-                        {e.url && (
-                          <a href={e.url} target="_blank" rel="noreferrer"
-                            style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
-                            view
-                          </a>
-                        )}
-
-                        {/* Offered ONLY when the analyzer can no longer find
-                            the problem. Closing a thread on something still
-                            broken would record it as handled, which is a claim
-                            about the code rather than about the thread. */}
-                        {!isResolved && e.canResolve && (
-                          <button
-                            onClick={() => resolveOne(e.fingerprint)}
-                            disabled={busy !== null || needsToken}
-                            title="Resolve this conversation on GitHub — the analyzer no longer finds this problem"
-                            style={{ ...btn('ghost'), fontSize: 9, padding: '2px 7px' }}
-                          >
-                            {working ? 'resolving…' : 'Mark resolved'}
-                          </button>
-                        )}
-                        {!isResolved && !e.canResolve && e.stillFound && (
-                          <span
-                            title="Fix it first. If you disagree with the finding, resolve the thread on GitHub."
-                            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--t7)', padding: '2px 7px' }}
-                          >
-                            not fixed
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Already done on an earlier run. Listed with links because an
-                edited inline comment lives on the Files-changed tab and is
-                genuinely hard to find among a long diff — "3 already marked
-                resolved" was a claim with nowhere to go. */}
-            {preview.mode === 'comment' && preview.alreadyResolved.length > 0 && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 5,
-                background: 'var(--code)', border: '1px solid var(--bd4)',
-                borderRadius: 6, padding: '9px 10px',
-              }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t6)' }}>
-                  ALREADY MARKED RESOLVED ON THIS PR ({preview.alreadyResolved.length})
-                </div>
-                {preview.alreadyResolved.map(r => (
-                  <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-                    <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
-                    <span style={{
-                      fontSize: 11.5, color: 'var(--t4)', lineHeight: 1.5,
-                      flex: 1, minWidth: 0, textDecoration: 'line-through',
-                    }}>
-                      {r.title || r.fingerprint}
-                    </span>
-                    {r.url
-                      ? <a href={r.url} target="_blank" rel="noreferrer"
-                          style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
-                          view on GitHub →
-                        </a>
-                      : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
-                  </div>
-                ))}
-                <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
-                  These are inline review comments, so they appear on the PR's Files changed tab.
-                </div>
-              </div>
-            )}
-
-            {/* What will be EDITED on the PR, not posted. A reviewer is about
-                to authorise changes to comments already published under their
-                name, so the panel names them rather than saying "3". */}
-            {preview.mode === 'comment' && preview.resolutions.length > 0 && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 5,
-                background: 'var(--code)', border: '1px solid var(--ok)',
-                borderRadius: 6, padding: '9px 10px',
-              }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>
-                  FIXED SINCE THE LAST REVIEW — {preview.resolutions.length} comment
-                  {preview.resolutions.length === 1 ? '' : 's'} will be edited to “✅ Resolved”
-                </div>
-                {preview.resolutions.map(r => (
-                  <div key={r.fingerprint} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-                    <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓</span>
-                    <span style={{ fontSize: 11.5, color: 'var(--t2)', lineHeight: 1.5, flex: 1, minWidth: 0 }}>
-                      {r.title || r.fingerprint}
-                    </span>
-                    {r.url
-                      ? <a href={r.url} target="_blank" rel="noreferrer"
-                          style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--info-fg)' }}>
-                          view on GitHub →
-                        </a>
-                      : r.path && <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>{r.path}</span>}
-                  </div>
-                ))}
-                <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t7)', lineHeight: 1.5 }}>
-                  The original wording is kept in a collapsed section on each comment.
-                </div>
-              </div>
-            )}
-
-            {preview.detail.length > 0 && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 3,
-                maxHeight: 200, overflowY: 'auto',
-                background: 'var(--code)', border: '1px solid var(--bd4)',
-                borderRadius: 6, padding: '8px 9px',
-              }}>
-                {preview.detail.map((d, i) => (
-                  <div key={i} style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t3)', lineHeight: 1.6 }}>{d}</div>
-                ))}
-              </div>
-            )}
-
-            {preview.rejected.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)' }}>
-                  COULD NOT PATCH ({preview.rejected.length})
-                </div>
-                {preview.rejected.map((r, i) => (
-                  <div key={i} style={{ fontSize: 10.5, color: 'var(--t5)', lineHeight: 1.5 }}>{r.reason}</div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-              <button onClick={closePreview} style={btn('ghost')}>
-                {posted.size > 0 ? 'Close' : 'Cancel'}
-              </button>
-              {/* The bulk path is still here: several comments in ONE review
-                  means the PR author gets one notification, not one per
-                  finding. Posting individually is a deliberate choice, not the
-                  only option. */}
-              <button
-                onClick={() => call(preview.mode, true)}
-                disabled={busy !== null || nothingToWrite}
-                style={{ ...btn('danger'), opacity: nothingToWrite ? 0.5 : 1 }}
-              >
-                {busy === preview.mode ? 'writing…' : confirmLabel}
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+      {preview?.mode === 'commit' && renderPreview(true)}
     </div>
   );
 }
