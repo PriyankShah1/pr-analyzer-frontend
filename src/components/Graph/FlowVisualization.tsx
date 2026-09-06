@@ -43,6 +43,10 @@ interface FlowVisualizationProps {
   aiReviewRan?: boolean;
   onRunInDepth?: () => void;
   inDepthRunning?: boolean;
+  autoMinutes?: number;
+  onAutoMinutesChange?: (minutes: number) => void;
+  changeNotice?: { sha: string; summary: string; at: number } | null;
+  onDismissNotice?: () => void;
   tokenOptional?: boolean;
   onNeedToken?: () => void;
   onReanalyze?: () => void;
@@ -58,6 +62,7 @@ function FlowInner({
   codeLanguage, codeContext, aiExplanations,
   risks = [], riskDiff, githubToken, onBackToHistory, onWriteComplete,
   aiReviewRan, onRunInDepth, inDepthRunning, tokenOptional, onNeedToken,
+  autoMinutes, onAutoMinutesChange, changeNotice, onDismissNotice,
   onReanalyze, reanalyzing,
   selectedNodeId, onSelectNode, locateRequest,
 }: FlowVisualizationProps) {
@@ -261,6 +266,10 @@ function FlowInner({
         onDone={mode => onWriteComplete?.(mode)}
         historyOpen={historyOpen}
         onToggleHistory={() => setHistoryOpen(o => !o)}
+        autoMinutes={autoMinutes}
+        onAutoMinutesChange={onAutoMinutesChange}
+        changeNotice={changeNotice}
+        onDismissNotice={onDismissNotice}
       />
 
       <TriagePanel

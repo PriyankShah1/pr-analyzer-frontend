@@ -11,6 +11,7 @@ import type { RefreshOutcome } from './components/History/HistoryBoard';
 import { useTheme }          from './hooks/useTheme';
 import { useHistory }        from './hooks/useHistory';
 import { useAnalyze }        from './hooks/useAnalyze';
+import { useAutoRefresh }    from './hooks/useAutoRefresh';
 import type { AnalysisResponse, PRHistoryItem } from './types';
 import { DEMO_PR_URL } from './constants';
 import './App.css';
@@ -61,6 +62,29 @@ export default function App() {
   const [reanalyzing,     setReanalyzing]     = useState(false);
   // Set while the in-depth review is being fetched for the open PR.
   const [inDepthRunning,  setInDepthRunning]  = useState(false);
+
+  // Auto-check. Persisted so a preference survives a reload, and read once so
+  // a corrupt value cannot break the first render.
+  const [autoMinutes, setAutoMinutes] = useState<number>(() => {
+    try {
+      const raw = Number(localStorage.getItem('pr-analyzer-auto-minutes'));
+      return [0, 15, 30].includes(raw) ? raw : 15;
+    } catch { return 15; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('pr-analyzer-auto-minutes', String(autoMinutes)); } catch { /* ignore */ }
+  }, [autoMinutes]);
+
+  /**
+   * What an automatic check found, if anything. Null while nothing has moved.
+   *
+   * Only a NEW HEAD COMMIT counts as news. Re-checking an unchanged PR
+   * produces an identical diff every time, so keying the notice off the diff
+   * would re-announce the same three fixes every 15 minutes until dismissed.
+   */
+  const [changeNotice, setChangeNotice] = useState<
+    { sha: string; summary: string; at: number } | null
+  >(null);
 
 
   const handleAnalyze = async (urlOverride?: string, opts: { aiReview?: boolean } = {}) => {
@@ -170,6 +194,57 @@ export default function App() {
       setReanalyzing(false);
     }
   };
+
+  /**
+   * One automatic check. Read-only, and deliberately WITHOUT the in-depth
+   * review: that is a paid model call and an opt-in, so a background timer
+   * must never spend it.
+   */
+  const autoCheck = async () => {
+    if (!prUrl.trim()) return;
+    const seenSha = result?.prHeadSha ?? null;
+    try {
+      const run = await reanalyze(prUrl, githubToken, false);
+      const sha = run.data.prHeadSha ?? null;
+
+      // Nothing was pushed — adopting would re-render the graph and reset the
+      // detail panel for no reason.
+      if (!sha || sha === seenSha) return;
+
+      remapSelection(run.data);
+      adoptRun(run);
+      addToHistory(prUrl, run.data);
+
+      const c = run.diff?.counts;
+      const parts = c ? [
+        c.regressed  > 0 ? `${c.regressed} came back` : null,
+        c.introduced > 0 ? `${c.introduced} new`      : null,
+        c.resolved   > 0 ? `${c.resolved} fixed`      : null,
+      ].filter(Boolean) : [];
+
+      setChangeNotice({
+        sha,
+        at: Date.now(),
+        summary: parts.length ? parts.join(' · ') : 'new commit, findings unchanged',
+      });
+    } catch {
+      // A failed background check is not worth interrupting anyone over. The
+      // next tick tries again, and the manual Refresh still reports errors.
+    }
+  };
+
+  useAutoRefresh({
+    // Never on the demo. Its Refresh deliberately advances a fixture revision,
+    // so a timer would manufacture a "new commit" every interval and the
+    // notice would be reporting the demo to itself.
+    enabled: autoMinutes > 0
+      && view === 'workspace'
+      && !!result
+      && prUrl.trim() !== DEMO_PR_URL,
+    intervalMs: autoMinutes * 60_000,
+    paused: loading || reanalyzing || inDepthRunning,
+    onTick: autoCheck,
+  });
 
   const loadFromHistory = (item: PRHistoryItem) => {
     setResult(item.result);
@@ -371,6 +446,10 @@ export default function App() {
                 finally { setInDepthRunning(false); }
               }}
               inDepthRunning={inDepthRunning}
+              autoMinutes={autoMinutes}
+              onAutoMinutesChange={setAutoMinutes}
+              changeNotice={changeNotice}
+              onDismissNotice={() => setChangeNotice(null)}
               onReanalyze={handleReanalyzeCurrent}
               reanalyzing={reanalyzing}
               tokenOptional={prUrl.trim() === DEMO_PR_URL}

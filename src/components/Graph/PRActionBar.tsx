@@ -88,6 +88,12 @@ interface PRActionBarProps {
    *  anything?", which is the question Refresh provokes. */
   historyOpen?: boolean;
   onToggleHistory?: () => void;
+  /** Minutes between automatic checks; 0 is off. */
+  autoMinutes?: number;
+  onAutoMinutesChange?: (minutes: number) => void;
+  /** Set when an automatic check found a new commit. */
+  changeNotice?: { sha: string; summary: string; at: number } | null;
+  onDismissNotice?: () => void;
   /**
    * Something was written. The MODE matters: committing a fix changes the code
    * and needs a fresh analysis, posting a comment does not — re-analyzing after
@@ -112,6 +118,7 @@ export function PRActionBar({
   prUrl, token, risks, aiReviewRan, onRunInDepth, inDepthRunning,
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
   historyOpen, onToggleHistory,
+  autoMinutes = 0, onAutoMinutesChange, changeNotice, onDismissNotice,
 }: PRActionBarProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -304,7 +311,10 @@ export function PRActionBar({
           title={needsToken
             ? 'GitHub has no anonymous commenting — a comment needs an author, so a token is required even on a public repo. Read-only scope is not enough; `public_repo` is.'
             : 'Preview the comments before anything is posted'}
-          style={btn(needsToken ? 'ghost' : 'accent')}
+          // Neutral until it is actually doing something. Standing blue read as
+          // "already pressed" on a bar where nothing had been clicked yet;
+          // colour here should mean state, not decoration.
+          style={btn(preview?.mode === 'comment' ? 'on' : 'ghost')}
         >
           <span>❝</span>
           {busy === 'comment' ? 'Checking…' : needsToken ? 'Post comments (add token)' : 'Post comments'}
@@ -317,7 +327,10 @@ export function PRActionBar({
           title={anchored.length === 0
             ? 'No finding has a verified position to patch'
             : 'Generate real patches and preview the diffs before anything is committed'}
-          style={{ ...btn('ghost'), opacity: anchored.length === 0 ? 0.5 : 1 }}
+          style={{
+            ...btn(preview?.mode === 'commit' ? 'on' : 'ghost'),
+            opacity: anchored.length === 0 ? 0.5 : 1,
+          }}
         >
           <span>⚒</span>
           {busy === 'commit' ? 'Generating…' : 'Suggest fixes'}
@@ -344,12 +357,82 @@ export function PRActionBar({
         >
           <span>▤</span>
           Review history
+          {changeNotice && (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--info-fg)', flex: '0 0 6px',
+            }} />
+          )}
         </button>
 
         <div style={{ flex: 1 }} />
 
+        {/* The automation, stated rather than hidden. B2 ruled out a background
+            refresh precisely because silent automation is hard to trust; this
+            keeps the rule's intent by showing the interval next to the switch
+            that turns it off. Every check is read-only. */}
+        {onAutoMinutesChange && (
+          <div
+            title="Re-checks this PR for new commits while the tab is open. Read-only, and never runs the in-depth review."
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontFamily: MONO, fontSize: 10, color: 'var(--t6)',
+            }}
+          >
+            <span>auto-check</span>
+            {[0, 15, 30].map(m => (
+              <button
+                key={m}
+                onClick={() => onAutoMinutesChange(m)}
+                style={{
+                  fontFamily: MONO, fontSize: 10, cursor: 'pointer',
+                  padding: '3px 7px', borderRadius: 5,
+                  background: autoMinutes === m ? 'var(--sel-bg)' : 'transparent',
+                  border: `1px solid ${autoMinutes === m ? 'var(--sel-bd)' : 'var(--bd2)'}`,
+                  color: autoMinutes === m ? 'var(--t1)' : 'var(--t6)',
+                }}
+              >
+                {m === 0 ? 'off' : `${m}m`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {done && <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ok)' }}>{done}</span>}
       </div>
+
+      {/* Something changed while you were elsewhere. Deliberately a strip and
+          not a toast: a toast that disappears is exactly the wrong shape for
+          news you might step away from. */}
+      {changeNotice && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '8px 11px', borderRadius: 7,
+          background: 'var(--info-bg)', border: '1px solid var(--info-bd)',
+        }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: 'var(--info-fg)', flex: '0 0 7px',
+            animation: 'pulseNode 2s ease-in-out 3',
+          }} />
+          <span style={{ fontSize: 12, color: 'var(--t1)' }}>
+            New commit <code style={{ fontFamily: MONO }}>{changeNotice.sha.slice(0, 7)}</code> — {changeNotice.summary}
+          </span>
+          <button
+            onClick={onToggleHistory}
+            style={{ ...btn('ghost'), fontSize: 9.5, padding: '3px 8px' }}
+          >
+            Review history
+          </button>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={onDismissNotice}
+            style={{ ...btn('ghost'), fontSize: 9.5, padding: '3px 8px' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {historyOpen && (
         <div style={{
