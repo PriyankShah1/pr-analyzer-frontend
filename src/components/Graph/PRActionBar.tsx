@@ -74,6 +74,9 @@ interface Preview {
   /** Already marked resolved on an earlier run — shown so the claim is
    *  checkable, since an edited inline comment is easy to lose in a long diff. */
   alreadyResolved: Resolution[];
+  /** True when confirming would put a summary on the PR — including restoring
+   *  one that was deleted. Counts as a write on its own. */
+  willPostSummary: boolean;
   detail: string[];
   rejected: Array<{ fingerprint: string; reason: string }>;
 }
@@ -227,6 +230,7 @@ export function PRActionBar({
           resolutions: mode === 'comment' ? (d.plan?.resolutions ?? []) : [],
           alreadyResolved: mode === 'comment' ? (d.plan?.alreadyResolved ?? []) : [],
           onPR: mode === 'comment' ? (d.onPR ?? []) : [],
+          willPostSummary: Boolean(d.plan?.counts?.willPostSummary),
           detail: mode === 'commit' ? (d.patches ?? []).map((p: any) => `${p.file} — ${p.title}`) : [],
           rejected: (mode === 'comment' ? [] : d.rejected) ?? [],
         });
@@ -357,10 +361,17 @@ export function PRActionBar({
       // precisely the state a PR reaches once the fixes land, so the whole
       // resolve-in-place path was unreachable.
       const resolveCount = preview.mode === 'comment' ? preview.resolutions.length : 0;
-      const nothingToWrite = selectedCount === 0 && resolveCount === 0;
+      // Restoring a deleted summary is a write with nothing to select and
+      // nothing to resolve. Leaving it out of this count disabled the confirm
+      // button while the server was perfectly willing to do it.
+      const summaryOnly = preview.mode === 'comment'
+        && selectedCount === 0 && resolveCount === 0 && preview.willPostSummary;
+      const nothingToWrite = selectedCount === 0 && resolveCount === 0 && !summaryOnly;
 
       const confirmLabel = preview.mode !== 'comment'
         ? 'Confirm & commit'
+        : summaryOnly
+        ? 'Restore the summary'
         : [
             selectedCount > 0 ? `Post ${selectedCount}` : null,
             resolveCount > 0 ? `mark ${resolveCount} resolved` : null,
