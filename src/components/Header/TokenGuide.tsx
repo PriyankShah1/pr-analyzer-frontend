@@ -39,12 +39,12 @@ const ROWS: Row[] = [
   },
   {
     what: 'Raise the rate limit (60 → 5,000/hr)',
-    classic: 'Any token. No scopes ticked.',
+    classic: 'Any token — no scopes needed for READING',
     fine: 'Any token.',
   },
   {
     what: 'Post review comments',
-    classic: 'No scopes ticked — works on any public repo',
+    classic: 'public_repo (or repo for private)',
     fine: 'Pull requests: Read and write, on that repo',
   },
   {
@@ -149,6 +149,12 @@ export function TokenGuide() {
             there is nothing to tick and no sign anything is missing — it just
             cannot comment or commit. Use{' '}
             <em>“Only select repositories”</em> and grant the permission above.
+          </div>
+
+          <div style={{ fontSize: 11, lineHeight: 1.55, color: 'var(--t5)' }}>
+            A token with no scopes at all can only READ public data. Writing —
+            a comment or a commit — needs the scope above, and the failure is a
+            403 that looks like the token is wrong rather than under-scoped.
           </div>
 
           <div style={{ fontSize: 11, lineHeight: 1.55, color: 'var(--t5)' }}>

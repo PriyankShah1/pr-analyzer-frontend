@@ -58,16 +58,29 @@ export function useHistory() {
     }
 
     const kept = outcome.stored?.length ?? 0;
-    if (kept < history.length) {
-      // Match state to what was actually written. The effect re-runs once on
-      // the shorter list, finds it fits, and settles.
-      const dropped = history.length - kept;
+    if (kept >= history.length) return;
+
+    const dropped = history.length - kept;
+
+    // Nothing fit at all. Keep the list in memory rather than wiping it —
+    // discarding it would throw away the analysis that had just completed,
+    // which is the one the user is looking at.
+    if (kept === 0) {
       setStorageNotice(
-        `Local storage is full, so ${dropped} older ${dropped === 1 ? 'analysis was' : 'analyses were'} `
-        + 'dropped. The PRs themselves are unaffected — re-analyze to bring one back.',
+        'Local storage is full, so analyses cannot be saved. They are kept for '
+        + 'this tab and will be gone after a reload — clear some site data to '
+        + 'save them again.',
       );
-      setHistory(outcome.stored ?? []);
+      return;
     }
+
+    // Otherwise match state to what was actually written: the effect re-runs
+    // once on the shorter list, finds it fits, and settles.
+    setStorageNotice(
+      `Local storage is full, so ${dropped} older ${dropped === 1 ? 'analysis was' : 'analyses were'} `
+      + 'dropped. The PRs themselves are unaffected — re-analyze to bring one back.',
+    );
+    setHistory(outcome.stored ?? []);
   }, [history]);
 
   const addToHistory = (url: string, result: AnalysisResponse) => {

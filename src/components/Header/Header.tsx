@@ -10,7 +10,7 @@
 // entirely — removing it gives the graph canvas the full window width, which
 // is the one thing this tool never has enough of.
 
-import { forwardRef, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import type { Theme } from '../../types';
 import { TokenGuide } from './TokenGuide';
 
@@ -80,7 +80,9 @@ function ViewToggle({ view, onViewChange }: Pick<HeaderProps, 'view' | 'onViewCh
   ];
 
   return (
-    <div style={{
+    <div
+      data-tour="views"
+      style={{
       display: 'flex', gap: 2, padding: 2,
       background: 'var(--input)', border: '1px solid var(--bd2)', borderRadius: 7,
     }}>
@@ -115,6 +117,12 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
   // Reveal is local and defaults to hidden: the token stays masked unless the
   // person actively asks to see it, and closing the bar re-masks it.
   const [showToken, setShowToken] = useState(false);
+
+  // The re-masking half of that promise. Without it, revealing the token once
+  // and closing the bar left it in plaintext the next time the bar opened.
+  useEffect(() => {
+    if (!tokenOpen) setShowToken(false);
+  }, [tokenOpen]);
 
   return (
     <>
@@ -216,7 +224,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
       {/* Right cluster */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
         <StatusChip health={health} />
-        <span data-tour="views"><ViewToggle view={view} onViewChange={onViewChange} /></span>
+        <ViewToggle view={view} onViewChange={onViewChange} />
         <button
           onClick={onStartTour}
           title="Take the tour"

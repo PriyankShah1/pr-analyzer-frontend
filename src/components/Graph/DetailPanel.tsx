@@ -213,7 +213,10 @@ function DataFlowTab({ incoming, outgoing, nameOf, onLocateComponent }: {
                     <span style={{
                       fontFamily: MONO, fontSize: 9.5,
                       color: USAGE_COLOR[u.kind] ?? 'var(--t4)',
-                      border: `1px solid ${USAGE_COLOR[u.kind] ?? 'var(--t4)'}44`,
+                      // color-mix, not a `44` alpha suffix: these are now var(--n-*)
+                      // tokens, and `var(--n-blue-2)44` is invalid CSS, so the whole
+                      // border declaration was being dropped and the chips lost it.
+                      border: `1px solid color-mix(in srgb, ${USAGE_COLOR[u.kind] ?? 'var(--t4)'} 27%, transparent)`,
                       borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap', flexShrink: 0,
                     }}>
                       {u.kind}

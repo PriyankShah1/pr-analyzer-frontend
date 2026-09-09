@@ -25,7 +25,13 @@ const declared = [...readFileSync(tour, 'utf8').matchAll(/anchor:\s*'([^']+)'/g)
 const present = new Set();
 for (const f of files) {
   if (f === tour) continue;   // its own selector template is not an anchor
-  for (const m of readFileSync(f, 'utf8').matchAll(/data-tour="([^"]+)"/g)) present.add(m[1]);
+  const text = readFileSync(f, 'utf8');
+  // Two forms carry an anchor: the attribute written directly on an element,
+  // and a `dataTour="…"` prop passed to a component that sets it on its own
+  // root. The prop form exists because a wrapper element would break the
+  // parent's flex layout.
+  for (const m of text.matchAll(/data-tour="([^"]+)"/g)) present.add(m[1]);
+  for (const m of text.matchAll(/dataTour="([^"]+)"/g)) present.add(m[1]);
 }
 
 const missing = declared.filter(a => !present.has(a));

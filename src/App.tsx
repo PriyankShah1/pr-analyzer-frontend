@@ -340,6 +340,11 @@ export default function App() {
         onToggleToken={() => setTokenOpen(o => !o)}
       />
 
+      {/* Storage pressure is announced ABOVE the view switch, not inside the
+          workspace: the workspace is display:none on the History view, which
+          is precisely the screen whose entries were the ones dropped. */}
+      {storageNotice && <WarningBanner warnings={[storageNotice]} />}
+
       {/* ── History view — full width, no sidebar ── */}
       {view === 'history' && (
         <HistoryBoard
@@ -396,9 +401,7 @@ export default function App() {
             />
           )}
 
-          {/* Local storage filling up is the user's business: it silently
-              costs them saved analyses, and until now it did so invisibly. */}
-          <WarningBanner warnings={storageNotice ? [...warnings, storageNotice] : warnings} />
+          <WarningBanner warnings={warnings} />
 
           {/* Empty state */}
           {/* The column used to render nothing at all here. */}

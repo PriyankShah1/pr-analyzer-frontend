@@ -24,14 +24,19 @@ interface CodeFlowBarProps {
    * blank image and calling it done — is what used to happen.
    */
   exportNote?: string | null;
+  /** Tour anchor, set on the root so no wrapper element is needed. */
+  dataTour?: string;
 }
 
-export function CodeFlowBar({ onExportPNG, exporting = false, exportNote }: CodeFlowBarProps) {
+export function CodeFlowBar({ onExportPNG, exporting = false, exportNote, dataTour }: CodeFlowBarProps) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '13px 16px 8px', flex: '0 0 auto',
-    }}>
+    <div
+      data-tour={dataTour}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '13px 16px 8px', flex: '0 0 auto',
+      }}
+    >
       <span style={{
         fontFamily: MONO, fontSize: 10, letterSpacing: '0.09em', color: 'var(--t6)',
       }}>

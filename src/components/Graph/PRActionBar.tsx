@@ -85,6 +85,8 @@ interface Preview {
 }
 
 interface PRActionBarProps {
+  /** Tour anchor, set on the root so no wrapper element is needed. */
+  dataTour?: string;
   prUrl?: string;
   token: string;
   risks: Finding[];
@@ -134,6 +136,7 @@ function btn(tone: 'ghost' | 'accent' | 'danger' | 'on'): React.CSSProperties {
 }
 
 export function PRActionBar({
+  dataTour,
   prUrl, token, risks, aiReviewRan, onRunInDepth, inDepthRunning,
   onReanalyze, reanalyzing, tokenOptional, onNeedToken, onDone,
   historyRequest = 0, panelTab, onPanelTabChange,
@@ -846,7 +849,9 @@ export function PRActionBar({
   };
 
   return (
-    <div style={{
+    <div
+      data-tour={dataTour}
+      style={{
       display: 'flex', flexDirection: 'column', gap: 8,
       padding: '10px 16px 0',
       // Grows to fill the column when a view is open; otherwise it is just the

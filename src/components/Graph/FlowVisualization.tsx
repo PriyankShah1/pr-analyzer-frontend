@@ -268,8 +268,12 @@ function FlowInner({
       {/* The PR's own actions: in-depth review, post comments, suggest fixes,
           refresh. Between the run header and the triage list — they belong to
           the PR, not to the app chrome above and not to the issue list below. */}
-      <span data-tour="action-bar">
+      {/* The anchor is a PROP, not a wrapper element: a bare <span> is
+          display:inline, so it became the flex child and PRActionBar's
+          `flex: 1 1 auto` / `minHeight: 0` stopped applying — the panel no
+          longer filled the column or scrolled inside itself. */}
       <PRActionBar
+        dataTour="action-bar"
         prUrl={prUrl}
         token={githubToken ?? ''}
         risks={risks}
@@ -290,7 +294,6 @@ function FlowInner({
         onDismissNotice={onDismissNotice}
         dataVersion={dataVersion}
       />
-      </span>
 
       {/* The graph half of the column. Hidden — not unmounted — while a view
           is open: React Flow re-measures and re-runs its entrance animation on
@@ -313,7 +316,7 @@ function FlowInner({
         onShowHistory={() => setHistoryRequest(n => n + 1)}
       />
 
-      <span data-tour="export"><CodeFlowBar onExportPNG={downloadAsPNG} exporting={exporting} exportNote={exportNote} /></span>
+      <CodeFlowBar dataTour="export" onExportPNG={downloadAsPNG} exporting={exporting} exportNote={exportNote} />
 
       <div
         ref={canvasContainerRef}
