@@ -12,6 +12,7 @@ import type { AnalysisResponse, PRHistoryItem } from '../types';
 // countBySeverity/identify live in utils/runSummary because they are pure
 // derivations the board needs without ever mounting a hook.
 import { countBySeverity, identify, labelFromUrl } from '../utils/runSummary';
+import { writeShrinking, halveFromEnd, readJSON } from '../services/safeStorage';
 
 export type { PRHistoryItem } from '../types';
 
@@ -19,47 +20,54 @@ const STORAGE_KEY = 'pr-analyzer-history';
 const MAX_HISTORY = 20;
 
 function loadHistory(): PRHistoryItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    // A stale or hand-edited entry must degrade to "not stored" rather than
-    // crash a render. Only the fields every reader dereferences are required;
-    // `pr` and `severity` are optional by design and derived when absent.
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (h: unknown): h is PRHistoryItem =>
-        !!h && typeof h === 'object'
-        && typeof (h as PRHistoryItem).id === 'string'
-        && typeof (h as PRHistoryItem).url === 'string'
-        && !!(h as PRHistoryItem).result,
-    );
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(items: PRHistoryItem[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    // Quota exceeded. Full analysis results are large, so halving the list is
-    // the realistic recovery; if even that fails, keep the in-memory list and
-    // let the next write try again rather than throwing during a render.
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(items.slice(0, Math.floor(MAX_HISTORY / 2))),
-      );
-    } catch { /* storage is unusable — this session stays memory-only */ }
-  }
+  const parsed = readJSON<unknown>(STORAGE_KEY, []);
+  // A stale or hand-edited entry must degrade to "not stored" rather than
+  // crash a render. Only the fields every reader dereferences are required;
+  // `pr` and `severity` are optional by design and derived when absent.
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (h: unknown): h is PRHistoryItem =>
+      !!h && typeof h === 'object'
+      && typeof (h as PRHistoryItem).id === 'string'
+      && typeof (h as PRHistoryItem).url === 'string'
+      && !!(h as PRHistoryItem).result,
+  );
 }
 
 export function useHistory() {
   const [history, setHistory] = useState<PRHistoryItem[]>(loadHistory);
 
+  /**
+   * Set when storage could not hold everything, so the board can SAY so.
+   *
+   * Silent eviction was the old behaviour: the list on screen kept all 20
+   * entries while storage held 10, and the missing half only appeared (as an
+   * absence) after a reload.
+   */
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+
   useEffect(() => {
-    saveHistory(history);
+    const outcome = writeShrinking(STORAGE_KEY, history, halveFromEnd);
+
+    if (outcome.unavailable) {
+      setStorageNotice(
+        'This browser is not allowing local storage, so analyses will be kept '
+        + 'only until you close the tab.',
+      );
+      return;
+    }
+
+    const kept = outcome.stored?.length ?? 0;
+    if (kept < history.length) {
+      // Match state to what was actually written. The effect re-runs once on
+      // the shorter list, finds it fits, and settles.
+      const dropped = history.length - kept;
+      setStorageNotice(
+        `Local storage is full, so ${dropped} older ${dropped === 1 ? 'analysis was' : 'analyses were'} `
+        + 'dropped. The PRs themselves are unaffected — re-analyze to bring one back.',
+      );
+      setHistory(outcome.stored ?? []);
+    }
   }, [history]);
 
   const addToHistory = (url: string, result: AnalysisResponse) => {
@@ -95,5 +103,13 @@ export function useHistory() {
     setHistory([]);
   };
 
-  return { history, addToHistory, removeFromHistory, clearHistory, maxHistory: MAX_HISTORY };
+  return {
+    history,
+    addToHistory,
+    removeFromHistory,
+    clearHistory,
+    maxHistory: MAX_HISTORY,
+    storageNotice,
+    dismissStorageNotice: () => setStorageNotice(null),
+  };
 }

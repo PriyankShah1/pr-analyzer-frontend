@@ -17,6 +17,7 @@
 import type { Finding, ReviewSnapshot } from '../types/risk';
 import { computeRiskDiff, carryForwardResolved } from './riskDiff';
 import type { RiskDiff } from '../types/risk';
+import { writeShrinking, readJSON, removeKey } from './safeStorage';
 
 const STORAGE_KEY = 'pr-analyzer-risk-registry';
 
@@ -43,9 +44,7 @@ function isSnapshot(value: unknown): value is ReviewSnapshot {
 
 function load(): RegistryShape {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = readJSON<unknown>(STORAGE_KEY, {});
     if (!parsed || typeof parsed !== 'object') return {};
 
     // Drop anything that doesn't match the current shape rather than letting
@@ -63,20 +62,16 @@ function load(): RegistryShape {
 }
 
 function save(registry: RegistryShape): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
-  } catch {
-    // Quota exceeded. Evict the least-recently-reviewed PRs and retry once;
-    // if that still fails, drop the registry rather than leaving it corrupt.
-    try {
-      const entries = Object.entries(registry)
-        .sort((a, b) => lastReviewedAt(b[1]) - lastReviewedAt(a[1]))
-        .slice(0, Math.floor(MAX_TRACKED_PRS / 2));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
-    } catch {
-      try { localStorage.removeItem(STORAGE_KEY); } catch { /* nothing left to do */ }
-    }
-  }
+  // Shrink by dropping the least-recently-reviewed PR each time, rather than
+  // halving once and then deleting the whole registry if that still does not
+  // fit. Losing the oldest PR's review history costs a re-review of that PR;
+  // losing the registry costs every PR's "was this fixed?" answer at once.
+  writeShrinking(STORAGE_KEY, registry, current => {
+    const entries = Object.entries(current)
+      .sort((a, b) => lastReviewedAt(b[1]) - lastReviewedAt(a[1]));
+    if (entries.length === 0) return null;
+    return Object.fromEntries(entries.slice(0, entries.length - 1));
+  });
 }
 
 function lastReviewedAt(snapshots: ReviewSnapshot[]): number {
@@ -209,7 +204,7 @@ export function forgetPR(repo: string, prNumber: number): void {
 }
 
 export function clearRegistry(): void {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* already gone */ }
+  removeKey(STORAGE_KEY);
 }
 
 /** Parse "https://github.com/owner/repo/pull/42" → { repo, prNumber }. */
