@@ -30,7 +30,11 @@ export function AIExplanation({
     () => ({ ...explanationsFor(prHeadSha), ...(initialExplanations || {}) }),
   );
   const [loadingLang, setLoadingLang]   = useState<string | null>(null);
+  // The failing language AND why. The reason used to be thrown away, so a
+  // Gemini quota error — which the backend already identifies precisely —
+  // reached the user as the word "Failed".
   const [errorLang, setErrorLang]       = useState<string | null>(null);
+  const [errorText, setErrorText]       = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState(false);
 
   useEffect(() => {
@@ -52,14 +56,24 @@ export function AIExplanation({
   const fetchExplanation = useCallback(async (langCode: string) => {
     setLoadingLang(langCode);
     setErrorLang(null);
+    setErrorText(null);
     try {
       const res = await axios.post(`${API}/explain`, {
         language: langCode, prTitle, codeLanguage, flows, stats, codeContext,
       });
       putExplanation(prHeadSha, langCode, res.data.explanation);
       setExplanations(prev => ({ ...prev, [langCode]: res.data.explanation }));
-    } catch {
+    } catch (err: any) {
       setErrorLang(langCode);
+      // The backend maps provider failures to something a person can act on
+      // ("Gemini quota exceeded", "no API key configured"). Prefer it over a
+      // generic message, and fall back only when there is nothing to show.
+      setErrorText(
+        err?.response?.data?.error
+        || (err?.code === 'ERR_NETWORK' || err?.code === 'ECONNABORTED'
+          ? 'Could not reach the backend.'
+          : null),
+      );
     } finally {
       setLoadingLang(null);
     }
@@ -127,7 +141,7 @@ export function AIExplanation({
             )}
             {errorLang === activeLang && loadingLang !== activeLang && (
               <div style={{ color: 'var(--sev1)' }}>
-                ⚠️ Failed.{' '}
+                ⚠️ {errorText || 'Could not generate this explanation.'}{' '}
                 <button
                   onClick={() => fetchExplanation(activeLang)}
                   style={{

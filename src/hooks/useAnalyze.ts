@@ -16,8 +16,35 @@ export interface AnalysisRun {
   diff: RiskDiff | null;
 }
 
-/** Turn an axios failure into something a reviewer can act on. */
-function describeError(err: any, hasToken: boolean): string {
+/**
+ * Did the request fail to COMPLETE, as opposed to being answered and rejected?
+ *
+ * `ERR_NETWORK` alone is not enough. A timeout arrives as `ECONNABORTED`, and
+ * this backend sleeps when idle — a cold start timing out is one of the most
+ * likely failures in production, and it used to be reported as a healthy
+ * backend plus the raw string "timeout of 30000ms exceeded". The Node-side
+ * codes are here so the same helper can be tested against a real socket
+ * failure rather than a hand-made stub.
+ */
+export function isTransportFailure(err: any): boolean {
+  if (err?.response) return false;   // it answered; the status says the rest
+  return err?.code === 'ERR_NETWORK'
+    || err?.code === 'ECONNABORTED'  // axios timeout
+    || err?.code === 'ETIMEDOUT'
+    || err?.code === 'ECONNREFUSED'
+    || err?.code === 'ECONNRESET'
+    || err?.code === 'ENOTFOUND'
+    || err?.code === 'EAI_AGAIN';
+}
+
+/** True for the subset of transport failures that are specifically a timeout. */
+function isTimeout(err: any): boolean {
+  return err?.code === 'ECONNABORTED' || err?.code === 'ETIMEDOUT';
+}
+
+/** Turn an axios failure into something a reviewer can act on. Exported for
+ *  the backend-down test (C-vii), which drives it with a real transport error. */
+export function describeError(err: any, hasToken: boolean): string {
   if (err.response?.status === 429)
     return `Too many requests. Wait ${err.response.data.retryAfter}s.`;
   if (err.response?.status === 404)
@@ -30,8 +57,11 @@ function describeError(err: any, hasToken: boolean): string {
     return 'Access forbidden. Check repo permissions or rate limits.';
   if (err.response?.status === 422)
     return err.response.data.error || 'PR is too large to analyze.';
-  if (err.code === 'ERR_NETWORK')
-    return 'Cannot reach backend. Please try again in a moment.';
+  if (isTimeout(err))
+    return 'The backend did not respond in time. It sleeps when idle, so the '
+      + 'first request after a quiet period can time out — try again.';
+  if (isTransportFailure(err))
+    return 'Cannot reach the backend. Check that it is running, then try again.';
   return err.response?.data?.error || err.message || 'Failed to analyze PR';
 }
 
@@ -113,7 +143,7 @@ export function useAnalyze() {
       // Only a transport failure means the backend is down. An HTTP error
       // (404, 422, rate limit) means it answered fine and rejected the input.
       setHealth({
-        up: err.code === 'ERR_NETWORK' ? false : true,
+        up: !isTransportFailure(err),
         latencyMs: Math.round(performance.now() - startedAt),
         cached: false,
       });
