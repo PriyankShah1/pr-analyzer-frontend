@@ -13,6 +13,7 @@ import { RunHeader }          from './RunHeader';
 import { CodeFlowBar }        from './CodeFlowBar';
 import { PRActionBar, type PanelTab } from './PRActionBar';
 import { TriagePanel }        from './TriagePanel';
+import { computeExportScale, willDownscale } from '../../utils/exportScale';
 import type { AnalysisFlow, AnalysisStats, Theme } from '../../types';
 import type { Finding, RiskDiff } from '../../types/risk';
 
@@ -69,6 +70,10 @@ function FlowInner({
   selectedNodeId, onSelectNode, locateRequest,
 }: FlowVisualizationProps) {
   const [exporting, setExporting] = useState(false);
+  // Set when the graph exceeded the canvas limit and the PNG was shrunk to
+  // fit, so the export can say so instead of quietly handing over a smaller
+  // image than the graph on screen.
+  const [exportNote, setExportNote] = useState<string | null>(null);
   // Owned here so the triage strip's "which ones?" link and the action bar's
   // Review history button open the same panel.
   // A counter, not a flag: the triage strip may ask for the history again
@@ -221,11 +226,14 @@ function FlowInner({
       // Supersample for a sharp image, but keep the result inside the ~16k px
       // limit browsers enforce on a single canvas — beyond it toDataURL
       // returns a blank image, which would look like a silent failure.
-      const MAX_DIMENSION = 12000;
-      const scale = Math.max(1, Math.min(
-        2 * (window.devicePixelRatio || 1),
-        MAX_DIMENSION / Math.max(exportW, exportH),
-      ));
+      // See utils/exportScale: this used to clamp the scale UP to 1, which
+      // defeated the cap on exactly the oversized graphs it was guarding.
+      const scale = computeExportScale(exportW, exportH, window.devicePixelRatio || 1);
+      setExportNote(
+        willDownscale(exportW, exportH)
+          ? `Graph is ${Math.round(exportW)}×${Math.round(exportH)}px — PNG scaled to ${Math.round(scale * 100)}% to fit`
+          : null,
+      );
 
       const canvas = await html2canvas(offscreen, {
         backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
@@ -260,6 +268,7 @@ function FlowInner({
       {/* The PR's own actions: in-depth review, post comments, suggest fixes,
           refresh. Between the run header and the triage list — they belong to
           the PR, not to the app chrome above and not to the issue list below. */}
+      <span data-tour="action-bar">
       <PRActionBar
         prUrl={prUrl}
         token={githubToken ?? ''}
@@ -281,15 +290,19 @@ function FlowInner({
         onDismissNotice={onDismissNotice}
         dataVersion={dataVersion}
       />
+      </span>
 
       {/* The graph half of the column. Hidden — not unmounted — while a view
           is open: React Flow re-measures and re-runs its entrance animation on
           remount, so unmounting would make every Close flash the graph back in
           as if it had just been analyzed. */}
-      <div style={{
-        display: panelTab ? 'none' : 'flex',
-        flexDirection: 'column', flex: 1, minHeight: 0,
-      }}>
+      <div
+        data-tour="canvas"
+        style={{
+          display: panelTab ? 'none' : 'flex',
+          flexDirection: 'column', flex: 1, minHeight: 0,
+        }}
+      >
       <TriagePanel
         edges={edgesState}
         risks={risks}
@@ -300,7 +313,7 @@ function FlowInner({
         onShowHistory={() => setHistoryRequest(n => n + 1)}
       />
 
-      <CodeFlowBar onExportPNG={downloadAsPNG} exporting={exporting} />
+      <span data-tour="export"><CodeFlowBar onExportPNG={downloadAsPNG} exporting={exporting} exportNote={exportNote} /></span>
 
       <div
         ref={canvasContainerRef}

@@ -18,9 +18,15 @@ const LEGEND = [
 interface CodeFlowBarProps {
   onExportPNG: () => void;
   exporting?: boolean;
+  /**
+   * Set when the graph is larger than a canvas can hold, so the PNG is
+   * downscaled to fit. Said out loud because the alternative — exporting a
+   * blank image and calling it done — is what used to happen.
+   */
+  exportNote?: string | null;
 }
 
-export function CodeFlowBar({ onExportPNG, exporting = false }: CodeFlowBarProps) {
+export function CodeFlowBar({ onExportPNG, exporting = false, exportNote }: CodeFlowBarProps) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -73,6 +79,19 @@ export function CodeFlowBar({ onExportPNG, exporting = false }: CodeFlowBarProps
       >
         {exporting ? 'Exporting…' : 'Export PNG'}
       </button>
+
+      {exportNote && (
+        <span
+          title={exportNote}
+          style={{
+            fontFamily: MONO, fontSize: 9.5, color: 'var(--t6)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            maxWidth: 240,
+          }}
+        >
+          {exportNote}
+        </span>
+      )}
     </div>
   );
 }
