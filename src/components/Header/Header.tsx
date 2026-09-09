@@ -10,8 +10,9 @@
 // entirely — removing it gives the graph canvas the full window width, which
 // is the one thing this tool never has enough of.
 
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
 import type { Theme } from '../../types';
+import { TokenGuide } from './TokenGuide';
 
 export type WorkspaceView = 'workspace' | 'history';
 
@@ -30,6 +31,8 @@ interface HeaderProps {
   onViewChange: (view: WorkspaceView) => void;
   theme: Theme;
   onToggleTheme: () => void;
+  /** Opens the guided tour. */
+  onStartTour: () => void;
   health: BackendHealth;
   githubToken: string;
   onTokenChange: (token: string) => void;
@@ -50,7 +53,10 @@ function StatusChip({ health }: { health: BackendHealth }) {
   const dotColor = health.up ? 'var(--ok)' : 'var(--sev1)';
   const parts = [
     health.up ? 'backend ok' : 'backend unreachable',
-    health.latencyMs !== null ? `${health.latencyMs}ms` : null,
+    // A latency reading for a request that never arrived is the timeout, not
+    // a measurement of the backend. Showing it reads as though something
+    // responded in 30 seconds.
+    health.up && health.latencyMs !== null ? `${health.latencyMs}ms` : null,
     health.cached ? 'cached' : null,
   ].filter(Boolean);
 
@@ -102,16 +108,23 @@ function ViewToggle({ view, onViewChange }: Pick<HeaderProps, 'view' | 'onViewCh
 
 export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header({
   prUrl, onPrUrlChange, onAnalyze, loading,
-  view, onViewChange, theme, onToggleTheme, health,
+  view, onViewChange, theme, onToggleTheme, onStartTour, health,
   githubToken, onTokenChange, tokenOpen, onToggleToken,
 }, tokenRef) {
   const isDark = theme === 'dark';
+  // Reveal is local and defaults to hidden: the token stays masked unless the
+  // person actively asks to see it, and closing the bar re-masks it.
+  const [showToken, setShowToken] = useState(false);
 
   return (
     <>
     <header style={{
       display: 'flex', alignItems: 'center', gap: 16,
-      height: 56, flex: '0 0 56px', padding: '0 18px',
+      // Wraps instead of overflowing once the controls no longer fit. The
+      // height is a MINIMUM for the same reason — a wrapped second row must
+      // be able to make the header taller rather than be clipped by it.
+      flexWrap: 'wrap', rowGap: 8,
+      minHeight: 56, flex: '0 0 auto', padding: '8px 18px',
       borderBottom: '1px solid var(--bd)', background: 'var(--panel)',
       position: 'sticky', top: 0, zIndex: 40,
     }}>
@@ -134,7 +147,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
       </div>
 
       {/* URL + Analyze */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, maxWidth: 620 }}>
+      <div style={{ flex: '1 1 320px', minWidth: 240, display: 'flex', alignItems: 'center', gap: 8, maxWidth: 620 }}>
         <div style={{
           flex: 1, display: 'flex', alignItems: 'center', gap: 8,
           height: 34, padding: '0 10px',
@@ -142,6 +155,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
         }}>
           <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--t9)' }}>git</span>
           <input
+            data-tour="url-input"
             value={prUrl}
             onChange={e => onPrUrlChange(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !loading) onAnalyze(); }}
@@ -154,6 +168,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
           />
         </div>
         <button
+          data-tour="analyze"
           onClick={onAnalyze}
           disabled={loading}
           style={{
@@ -174,6 +189,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
           visible without opening the bar — otherwise a pasted token is
           invisible and a user cannot tell whether it survived a reload. */}
       <button
+        data-tour="token"
         onClick={onToggleToken}
         title="Private repo token"
         style={{
@@ -200,7 +216,21 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
       {/* Right cluster */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
         <StatusChip health={health} />
-        <ViewToggle view={view} onViewChange={onViewChange} />
+        <span data-tour="views"><ViewToggle view={view} onViewChange={onViewChange} /></span>
+        <button
+          onClick={onStartTour}
+          title="Take the tour"
+          aria-label="Take the guided tour"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 30, height: 30,
+            border: '1px solid var(--bd2)', borderRadius: 6,
+            background: 'var(--input)', color: 'var(--t3)',
+            fontFamily: MONO, fontSize: 12, cursor: 'pointer',
+          }}
+        >
+          ?
+        </button>
         <button
           onClick={onToggleTheme}
           title="Toggle theme"
@@ -237,30 +267,51 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
         }}>
           <input
             ref={tokenRef}
-            type="password"
+            type={showToken ? 'text' : 'password'}
             value={githubToken}
             onChange={e => onTokenChange(e.target.value)}
             placeholder="ghp_xxxxxxxxxxxx"
             spellCheck={false}
+            autoComplete="off"
             style={{
               flex: 1, background: 'transparent', border: 0, outline: 0,
               color: 'var(--t3)', fontFamily: MONO, fontSize: 11,
             }}
           />
+          {/* A pasted token is impossible to check against the one you copied
+              while it is masked, and a token with a stray character fails in a
+              way that looks like a permissions problem. */}
+          <button
+            type="button"
+            onClick={() => setShowToken(v => !v)}
+            title={showToken ? 'Hide token' : 'Show token'}
+            aria-label={showToken ? 'Hide token' : 'Show token'}
+            aria-pressed={showToken}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 0, padding: 2,
+              color: showToken ? 'var(--t2)' : 'var(--t6)', cursor: 'pointer',
+              flex: '0 0 auto',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="1.8"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M1.8 12S5.5 5 12 5s10.2 7 10.2 7-3.7 7-10.2 7S1.8 12 1.8 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              {!showToken && <line x1="3.5" y1="20.5" x2="20.5" y2="3.5" />}
+            </svg>
+          </button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <span style={{ fontSize: 11, color: 'var(--t6)', lineHeight: 1.5 }}>
             Kept for this browser tab only — cleared when you close it. Never written
             to disk, never logged, never sent anywhere except GitHub.
           </span>
-          {/* Stated up front because the failure is silent and the setting is
-              counter-intuitive: a fine-grained token scoped to "Public
-              repositories" is read-only, and GitHub shows no Repository
-              permissions section for it at all. */}
-          <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t7)', lineHeight: 1.5 }}>
-            To post comments: fine-grained token → "Only select repositories" → Pull
-            requests: Read and write. ("Public repositories" access is read-only.)
-          </span>
+          {/* The per-capability detail lives in TokenGuide: comment and commit
+              need DIFFERENT permissions, and the one-line version of that was
+              wrong by omission — it never mentioned committing at all. */}
+          <TokenGuide />
         </div>
       </div>
     )}

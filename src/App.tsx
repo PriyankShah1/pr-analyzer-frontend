@@ -14,6 +14,7 @@ import { useTheme }          from './hooks/useTheme';
 import { useHistory }        from './hooks/useHistory';
 import { useAnalyze }        from './hooks/useAnalyze';
 import { useAutoRefresh }    from './hooks/useAutoRefresh';
+import { startTour, hasSeenTour, markTourSeen } from './components/Tour/GuidedTour';
 import type { AnalysisResponse, PRHistoryItem } from './types';
 import { DEMO_PR_URL } from './constants';
 import { splitUrl } from './utils/runSummary';
@@ -21,7 +22,8 @@ import './App.css';
 
 export default function App() {
   const { theme, toggle: toggleTheme }                               = useTheme();
-  const { history, addToHistory, clearHistory, maxHistory } = useHistory();
+  const { history, addToHistory, clearHistory, maxHistory,
+          storageNotice } = useHistory();
   const { loading, error, warnings, result, riskDiff, health,
           analyze, reanalyze, adoptRun, setResult, setError, setWarnings } = useAnalyze();
 
@@ -94,6 +96,30 @@ export default function App() {
     { sha: string; summary: string; at: number } | null
   >(null);
 
+  /**
+   * The guided tour auto-runs once, and only after the FIRST analysis has
+   * rendered.
+   *
+   * Running it on an empty app would spotlight a URL box and nothing else —
+   * the triage list, the action bar and the canvas do not exist until a PR has
+   * been analyzed, and a tour of absent things is worse than no tour. The
+   * button in the header runs it on demand at any time.
+   */
+  const tourArmed = useRef(!hasSeenTour());
+
+  useEffect(() => {
+    if (!tourArmed.current) return;
+    if (!result?.visualization || result.visualization.nodes.length === 0) return;
+
+    tourArmed.current = false;
+    // One frame for React Flow to lay the graph out — driver.js measures the
+    // element it is about to spotlight, and measuring it mid-layout puts the
+    // popover in the wrong place.
+    const t = window.setTimeout(() => {
+      if (!startTour()) markTourSeen();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [result]);
 
   const handleAnalyze = async (urlOverride?: string, opts: { aiReview?: boolean } = {}) => {
     // Callers that also setPrUrl must pass the URL explicitly: React state
@@ -306,6 +332,7 @@ export default function App() {
         onViewChange={setView}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onStartTour={() => { startTour(); }}
         health={health}
         githubToken={githubToken}
         onTokenChange={setGithubToken}
@@ -369,7 +396,9 @@ export default function App() {
             />
           )}
 
-          <WarningBanner warnings={warnings} />
+          {/* Local storage filling up is the user's business: it silently
+              costs them saved analyses, and until now it did so invisibly. */}
+          <WarningBanner warnings={storageNotice ? [...warnings, storageNotice] : warnings} />
 
           {/* Empty state */}
           {/* The column used to render nothing at all here. */}

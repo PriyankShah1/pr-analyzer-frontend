@@ -249,10 +249,13 @@ export function TriagePanel({
   if (items.length === 0) return null;
 
   return (
-    <div style={{
-      margin: '12px 16px 0', border: '1px solid var(--warn-bd)', borderRadius: 9,
-      background: 'var(--warn-bg)', overflow: 'hidden', flex: '0 0 auto',
-    }}>
+    <div
+      data-tour="triage"
+      style={{
+        margin: '12px 16px 0', border: '1px solid var(--warn-bd)', borderRadius: 9,
+        background: 'var(--warn-bg)', overflow: 'hidden', flex: '0 0 auto',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px' }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_COLOR[items[0].severity] }} />
 
