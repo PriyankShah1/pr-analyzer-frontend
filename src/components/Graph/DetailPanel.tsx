@@ -448,7 +448,11 @@ export function DetailPanel({
 
   return (
     <section style={{
-      width: 400, flex: '0 0 400px',
+      // Was a rigid `400px`, which on a 1280px laptop left the graph with a
+      // third of the window and no way to give it back. clamp() keeps the
+      // panel readable while letting the canvas take the space it needs.
+      width: 'clamp(300px, 26vw, 400px)',
+      flex: '0 0 clamp(300px, 26vw, 400px)',
       borderLeft: '1px solid var(--bd)', background: 'var(--panel)',
       display: 'flex', flexDirection: 'column', minHeight: 0,
     }}>
