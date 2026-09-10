@@ -33,6 +33,8 @@ interface HeaderProps {
   onToggleTheme: () => void;
   /** Opens the guided tour. */
   onStartTour: () => void;
+  /** Clears the open pull request and shows the start screen. */
+  onGoHome: () => void;
   health: BackendHealth;
   githubToken: string;
   onTokenChange: (token: string) => void;
@@ -110,7 +112,7 @@ function ViewToggle({ view, onViewChange }: Pick<HeaderProps, 'view' | 'onViewCh
 
 export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header({
   prUrl, onPrUrlChange, onAnalyze, loading,
-  view, onViewChange, theme, onToggleTheme, onStartTour, health,
+  view, onViewChange, theme, onToggleTheme, onStartTour, onGoHome, health,
   githubToken, onTokenChange, tokenOpen, onToggleToken,
 }, tokenRef) {
   const isDark = theme === 'dark';
@@ -136,8 +138,22 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
       borderBottom: '1px solid var(--bd)', background: 'var(--panel)',
       position: 'sticky', top: 0, zIndex: 40,
     }}>
-      {/* Brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
+      {/* Brand — and the way back to the start screen.
+          There was no way to CLOSE a pull request: once analyzed, the
+          workspace held it until another was analyzed, and Workspace always
+          returned to it. Rather than add a third nav item that would be empty
+          whenever you were actually working, the brand does what a brand does
+          on every other site. */}
+      <button
+        onClick={onGoHome}
+        title="Start a new analysis"
+        aria-label="Start a new analysis"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0,
+          background: 'transparent', border: 0, padding: 0,
+          cursor: 'pointer', color: 'inherit', font: 'inherit',
+        }}
+      >
         <div style={{
           width: 22, height: 22, borderRadius: 5, background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -152,7 +168,7 @@ export const Header = forwardRef<HTMLInputElement, HeaderProps>(function Header(
         }}>
           v6
         </div>
-      </div>
+      </button>
 
       {/* URL + Analyze */}
       <div style={{ flex: '1 1 320px', minWidth: 240, display: 'flex', alignItems: 'center', gap: 8, maxWidth: 620 }}>

@@ -300,6 +300,24 @@ export default function App() {
     onTick: autoCheck,
   });
 
+  /**
+   * Put the workspace back to the start screen.
+   *
+   * Clears the open run, not the history — the pull request is still on the
+   * board and one click away. Stays on Workspace, because the start screen IS
+   * the workspace with nothing open; a separate Home view would be an empty
+   * tab for as long as you were doing anything.
+   */
+  const goHome = () => {
+    setResult(null);
+    setPrUrl('');
+    setError(null);
+    setWarnings([]);
+    setActiveHistoryId(null);
+    setSelectedNodeId(null);
+    setView('workspace');
+  };
+
   const loadFromHistory = (item: PRHistoryItem) => {
     setResult(item.result);
     setPrUrl(item.url);
@@ -333,6 +351,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onStartTour={() => { startTour(); }}
+        onGoHome={goHome}
         health={health}
         githubToken={githubToken}
         onTokenChange={setGithubToken}
@@ -510,7 +529,6 @@ export default function App() {
               risks={result.risks}
               riskDiff={riskDiff}
               githubToken={githubToken}
-              onBackToHistory={() => setView('history')}
               // Only a commit changes the code. Re-analyzing after a comment
               // meant setResult(null), which unmounted the whole workspace —
               // the white flash — to produce an identical result.

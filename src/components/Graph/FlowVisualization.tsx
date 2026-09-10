@@ -39,7 +39,6 @@ interface FlowVisualizationProps {
   risks?:          Finding[];
   riskDiff?:       RiskDiff | null;
   githubToken?:    string;
-  onBackToHistory: () => void;
   onWriteComplete?: (mode: 'comment' | 'commit') => void;
   aiReviewRan?: boolean;
   onRunInDepth?: () => void;
@@ -63,7 +62,7 @@ interface FlowVisualizationProps {
 function FlowInner({
   nodes, edges, theme, flows, prTitle, prUrl, stats,
   codeLanguage, codeContext, aiExplanations,
-  risks = [], riskDiff, githubToken, onBackToHistory, onWriteComplete,
+  risks = [], riskDiff, githubToken, onWriteComplete,
   aiReviewRan, onRunInDepth, inDepthRunning, tokenOptional, onNeedToken,
   autoMinutes, onAutoMinutesChange, changeNotice, onDismissNotice, dataVersion,
   onReanalyze, reanalyzing,
@@ -275,7 +274,6 @@ function FlowInner({
         stats={stats}
         issueCount={stats?.totalRisks ?? risks.length}
         apiCalls={(flows ?? []).filter(f => f.type === 'api_call').length}
-        onBackToHistory={onBackToHistory}
       />
 
       {/* The PR's own actions: in-depth review, post comments, suggest fixes,

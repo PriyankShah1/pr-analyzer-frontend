@@ -15,7 +15,6 @@ interface RunHeaderProps {
   issueCount: number;
   /** Outbound API calls found in the diff — counted from the flows. */
   apiCalls: number;
-  onBackToHistory: () => void;
 }
 
 function StatChip({ value, label, tone = 'neutral' }: {
@@ -37,7 +36,7 @@ function StatChip({ value, label, tone = 'neutral' }: {
   );
 }
 
-export function RunHeader({ prUrl, prTitle, stats, issueCount, apiCalls, onBackToHistory }: RunHeaderProps) {
+export function RunHeader({ prUrl, prTitle, stats, issueCount, apiCalls }: RunHeaderProps) {
   const { repo, num } = prUrl ? splitUrl(prUrl) : { repo: '', num: '' };
 
   return (
@@ -46,19 +45,11 @@ export function RunHeader({ prUrl, prTitle, stats, issueCount, apiCalls, onBackT
       padding: '11px 16px', borderBottom: '1px solid var(--bd)',
       background: 'var(--sub)', flex: '0 0 auto',
     }}>
-      <button
-        onClick={onBackToHistory}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          fontFamily: MONO, fontSize: 10.5, color: 'var(--t5)',
-          border: '1px solid var(--bd2)', borderRadius: 5,
-          padding: '4px 8px', cursor: 'pointer', background: 'transparent',
-          flexShrink: 0,
-        }}
-      >
-        <span>←</span><span>History</span>
-      </button>
-
+      {/* There was a "← History" button here. It did exactly what the
+          History tab in the header does, so one screen carried two controls
+          with the same destination — and the header one is always visible,
+          including from the History view itself. The repo/number link below
+          now reads as the breadcrumb. */}
       {repo && (
         // The repo/number pair is the one reliable way back to the source of
         // truth, so it stays a real link rather than decorative text.
