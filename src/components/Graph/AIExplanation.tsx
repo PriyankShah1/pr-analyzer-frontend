@@ -1,5 +1,6 @@
 // src/components/Graph/AIExplanation.tsx
 import { useState, useEffect, useCallback } from 'react';
+import { explanationsFor, putExplanation } from '../../services/explanationCache';
 import axios from 'axios';
 import type { AnalysisFlow, AnalysisStats, ExplanationLanguage } from '../../types';
 
@@ -12,16 +13,28 @@ interface AIExplanationProps {
   stats:         AnalysisStats;
   codeContext?:  string;
   initialExplanations?: Record<string, string>;
+  /** Head SHA of the analyzed revision. Explanations are cached against it,
+   *  since a new commit means the old summary no longer describes the diff. */
+  prHeadSha?: string | null;
 }
 
 export function AIExplanation({
-  prTitle, codeLanguage, flows, stats, codeContext, initialExplanations,
+  prTitle, codeLanguage, flows, stats, codeContext, initialExplanations, prHeadSha,
 }: AIExplanationProps) {
   const [languages, setLanguages]       = useState<ExplanationLanguage[]>([]);
   const [activeLang, setActiveLang]     = useState<string>('en');
-  const [explanations, setExplanations] = useState<Record<string, string>>(initialExplanations || {});
+  // Seeded from the cache as well as the analysis, so a language fetched
+  // earlier in the session is still here after this component was unmounted
+  // and rebuilt — which used to cost another model call each time.
+  const [explanations, setExplanations] = useState<Record<string, string>>(
+    () => ({ ...explanationsFor(prHeadSha), ...(initialExplanations || {}) }),
+  );
   const [loadingLang, setLoadingLang]   = useState<string | null>(null);
+  // The failing language AND why. The reason used to be thrown away, so a
+  // Gemini quota error — which the backend already identifies precisely —
+  // reached the user as the word "Failed".
   const [errorLang, setErrorLang]       = useState<string | null>(null);
+  const [errorText, setErrorText]       = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState(false);
 
   useEffect(() => {
@@ -43,13 +56,24 @@ export function AIExplanation({
   const fetchExplanation = useCallback(async (langCode: string) => {
     setLoadingLang(langCode);
     setErrorLang(null);
+    setErrorText(null);
     try {
       const res = await axios.post(`${API}/explain`, {
         language: langCode, prTitle, codeLanguage, flows, stats, codeContext,
       });
+      putExplanation(prHeadSha, langCode, res.data.explanation);
       setExplanations(prev => ({ ...prev, [langCode]: res.data.explanation }));
-    } catch {
+    } catch (err: any) {
       setErrorLang(langCode);
+      // The backend maps provider failures to something a person can act on
+      // ("Gemini quota exceeded", "no API key configured"). Prefer it over a
+      // generic message, and fall back only when there is nothing to show.
+      setErrorText(
+        err?.response?.data?.error
+        || (err?.code === 'ERR_NETWORK' || err?.code === 'ECONNABORTED'
+          ? 'Could not reach the backend.'
+          : null),
+      );
     } finally {
       setLoadingLang(null);
     }
@@ -66,7 +90,7 @@ export function AIExplanation({
   return (
     <div style={{
       flex: 1, minWidth: 0,
-      borderRight: '1px solid var(--border)',
+      borderRight: '1px solid var(--bd)',
       display: 'flex', flexDirection: 'column',
     }}>
       {/* Panel header */}
@@ -75,9 +99,9 @@ export function AIExplanation({
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '7px 12px', border: 'none', cursor: 'pointer',
-          backgroundColor: 'var(--btn-bg)',
-          borderBottom: '1px solid var(--border)',
-          color: 'var(--text-muted)', fontSize: 10, fontWeight: 700,
+          backgroundColor: 'var(--chip)',
+          borderBottom: '1px solid var(--bd)',
+          color: 'var(--t6)', fontSize: 10, fontWeight: 700,
           textTransform: 'uppercase', letterSpacing: '0.06em',
         }}
       >
@@ -91,7 +115,7 @@ export function AIExplanation({
           <div style={{
             display: 'flex', gap: 4, padding: '6px 10px',
             flexWrap: 'wrap',
-            borderBottom: '1px solid var(--border)',
+            borderBottom: '1px solid var(--bd)',
           }}>
             {languages.map(lang => (
               <button
@@ -99,9 +123,9 @@ export function AIExplanation({
                 onClick={() => handleTabClick(lang.code)}
                 style={{
                   padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-                  border: `1px solid ${activeLang === lang.code ? 'var(--accent)' : 'var(--border)'}`,
-                  backgroundColor: activeLang === lang.code ? 'var(--accent)' : 'var(--btn-bg)',
-                  color: activeLang === lang.code ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${activeLang === lang.code ? 'var(--accent)' : 'var(--bd)'}`,
+                  backgroundColor: activeLang === lang.code ? 'var(--accent)' : 'var(--chip)',
+                  color: activeLang === lang.code ? '#fff' : 'var(--t3)',
                   cursor: 'pointer',
                 }}
               >
@@ -111,13 +135,13 @@ export function AIExplanation({
           </div>
 
           {/* Explanation — full height, no scroll cap, page scrolls instead */}
-          <div style={{ padding: '10px 12px', fontSize: 12, lineHeight: 1.7, color: 'var(--text)' }}>
+          <div style={{ padding: '10px 12px', fontSize: 12, lineHeight: 1.7, color: 'var(--t1)' }}>
             {loadingLang === activeLang && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>⏳ Generating...</div>
+              <div style={{ color: 'var(--t6)', fontStyle: 'italic' }}>⏳ Generating...</div>
             )}
             {errorLang === activeLang && loadingLang !== activeLang && (
-              <div style={{ color: 'var(--mismatch)' }}>
-                ⚠️ Failed.{' '}
+              <div style={{ color: 'var(--sev1)' }}>
+                ⚠️ {errorText || 'Could not generate this explanation.'}{' '}
                 <button
                   onClick={() => fetchExplanation(activeLang)}
                   style={{
@@ -133,7 +157,7 @@ export function AIExplanation({
               <p style={{ margin: 0 }}>{explanations[activeLang]}</p>
             )}
             {loadingLang !== activeLang && errorLang !== activeLang && !explanations[activeLang] && (
-              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>
+              <div style={{ color: 'var(--t6)', fontStyle: 'italic', fontSize: 11 }}>
                 Click a language tab to generate the explanation.
               </div>
             )}

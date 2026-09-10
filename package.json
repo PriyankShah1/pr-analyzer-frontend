@@ -8,13 +8,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build": "tsc && npm run check:tour && vite build",
+    "preview": "vite preview",
+    "check:tour": "node scripts/check-tour-anchors.mjs",
+    "test": "node tests/safeStorage.test.mjs && node tests/exportScale.test.mjs && node tests/prBoard.test.mjs && node tests/backendDown.test.mjs && node scripts/check-tour-anchors.mjs"
   },
   "dependencies": {
     "@reactflow/core": "^11.11.4",
     "@reactflow/node-resizer": "^2.2.14",
     "axios": "^1.16.0",
+    "driver.js": "^1.8.0",
     "html2canvas": "^1.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

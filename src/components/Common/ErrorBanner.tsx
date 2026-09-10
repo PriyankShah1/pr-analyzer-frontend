@@ -9,9 +9,9 @@ export function ErrorBanner({ error, onAddToken, showTokenButton }: ErrorBannerP
   return (
     <div style={{
       padding: '10px 20px',
-      backgroundColor: 'var(--error-bg)',
-      borderBottom: '1px solid var(--error-border)',
-      color: 'var(--error-text)',
+      backgroundColor: 'var(--warn-bg)',
+      borderBottom: '1px solid var(--sev1)',
+      color: 'var(--sev1)',
       fontSize: 13,
       display: 'flex', alignItems: 'center', gap: 8,
       flexShrink: 0,
@@ -22,7 +22,7 @@ export function ErrorBanner({ error, onAddToken, showTokenButton }: ErrorBannerP
           onClick={onAddToken}
           style={{
             marginLeft: 'auto', padding: '3px 10px',
-            backgroundColor: 'var(--mismatch)', color: '#fff',
+            backgroundColor: 'var(--sev1)', color: '#fff',
             border: 'none', borderRadius: 5,
             cursor: 'pointer', fontSize: 11, fontWeight: 600,
           }}

@@ -1,127 +1,176 @@
 // src/components/Graph/CustomNode.tsx
+// Graph node card, per the Claude Design handoff.
+//
+// Icons are geometric glyphs, not emoji. Emoji render differently on every
+// platform, carry colour we don't control, and read as decoration; a single
+// stroke-weight symbol set tinted with the node's own accent reads as a
+// legend you can learn. The mock establishes this for the React types and
+// this file extends the same language to the backend types.
+
 import { Handle, Position } from 'reactflow';
 
 export type NodeType =
-  | 'controller' | 'service'    | 'route'      | 'middleware'
-  | 'model'      | 'facade'     | 'repository' | 'client'
-  | 'job'        | 'event'      | 'listener'   | 'policy'
-  | 'request'    | 'resource'   | 'observer'   | 'command'
-  | 'deleted'    | 'broken';
+  | 'route' | 'middleware' | 'controller' | 'service' | 'repository'
+  | 'model' | 'facade' | 'client' | 'job' | 'event' | 'listener'
+  | 'policy' | 'request' | 'resource' | 'observer' | 'command'
+  | 'component' | 'hook' | 'api_call' | 'context_provider' | 'context_create'
+  | 'deleted' | 'broken';
 
 interface CustomNodeProps {
   data: {
-    label:       string;
-    type:        NodeType;
+    label: string;
+    type: NodeType;
+    file?: string | null;
     hasMismatch?: boolean;
-    isDeleted?:   boolean;
-    isBroken?:    boolean;
+    hasTypeMismatch?: boolean;
+    hasBrokenProps?: boolean;
+    hasMissingDeps?: boolean;
+    missingDeps?: string[];
+    isDeleted?: boolean;
+    isBroken?: boolean;
+    isLocated?: boolean;
+    isSelected?: boolean;
+    /** Index in the layout, used to stagger the entrance animation. */
+    order?: number;
   };
 }
 
 const NODE_CONFIG: Record<NodeType, { accent: string; icon: string; label: string }> = {
-  route:      { accent: '#4f46e5', icon: '🛣️',  label: 'Route'      },
-  middleware: { accent: '#d97706', icon: '🔒',  label: 'Middleware' },
-  controller: { accent: '#2563eb', icon: '🎮',  label: 'Controller' },
-  service:    { accent: '#0d9488', icon: '⚙️',  label: 'Service'    },
-  repository: { accent: '#0891b2', icon: '🗄️',  label: 'Repository' },
-  model:      { accent: '#92400e', icon: '📦',  label: 'Model'      },
-  facade:     { accent: '#475569', icon: '🏛️',  label: 'Facade'     },
-  client:     { accent: '#7c3aed', icon: '🔌',  label: 'Client'     },
-  job:        { accent: '#a855f7', icon: '⚡',  label: 'Job'        },
-  event:      { accent: '#f97316', icon: '📡',  label: 'Event'      },
-  listener:   { accent: '#0f766e', icon: '👂',  label: 'Listener'   },
-  policy:     { accent: '#be185d', icon: '🛡️',  label: 'Policy'     },
-  request:    { accent: '#1d4ed8', icon: '📨',  label: 'Request'    },
-  resource:   { accent: '#047857', icon: '📤',  label: 'Resource'   },
-  observer:   { accent: '#b45309', icon: '👁️',  label: 'Observer'   },
-  command:    { accent: '#1e293b', icon: '⌨️',  label: 'Command'    },
-  deleted:    { accent: '#6b7280', icon: '🗑️',  label: 'Deleted'    },
-  broken:     { accent: '#f97316', icon: '💥',  label: 'Broken ref' },
+  // React — colours fixed by the handoff
+  component:        { accent: 'var(--n-blue)', icon: '⚛', label: 'component' },
+  hook:             { accent: 'var(--n-violet)', icon: '⚙', label: 'hook' },
+  api_call:         { accent: 'var(--n-green)', icon: '→', label: 'api call' },
+  context_provider: { accent: 'var(--n-pink)', icon: '▣', label: 'provider' },
+  context_create:   { accent: 'var(--n-purple)', icon: '◈', label: 'context' },
+
+  // Backend — same visual language, extended
+  route:      { accent: 'var(--n-blue)', icon: '⇢', label: 'route' },
+  middleware: { accent: 'var(--n-orange)', icon: '⬡', label: 'middleware' },
+  controller: { accent: 'var(--n-blue)', icon: '◉', label: 'controller' },
+  service:    { accent: 'var(--n-green)', icon: '⚙', label: 'service' },
+  repository: { accent: 'var(--n-cyan)', icon: '▤', label: 'repository' },
+  model:      { accent: 'var(--n-violet)', icon: '◈', label: 'model' },
+  facade:     { accent: 'var(--n-grey)', icon: '◫', label: 'facade' },
+  client:     { accent: 'var(--n-purple)', icon: '⇄', label: 'client' },
+  job:        { accent: 'var(--n-pink)', icon: '⧗', label: 'job' },
+  event:      { accent: 'var(--n-orange)', icon: '◇', label: 'event' },
+  listener:   { accent: 'var(--n-green)', icon: '◎', label: 'listener' },
+  policy:     { accent: 'var(--n-pink)', icon: '⬡', label: 'policy' },
+  request:    { accent: 'var(--n-blue)', icon: '▷', label: 'request' },
+  resource:   { accent: 'var(--n-green)', icon: '▦', label: 'resource' },
+  observer:   { accent: 'var(--n-yellow)', icon: '◎', label: 'observer' },
+  command:    { accent: 'var(--n-grey)', icon: '▸', label: 'command' },
+
+  deleted:    { accent: 'var(--n-muted)', icon: '✗', label: 'deleted' },
+  broken:     { accent: 'var(--n-red)', icon: '⚠', label: 'broken ref' },
 };
 
-export function CustomNode({ data }: CustomNodeProps) {
-  const config      = NODE_CONFIG[data.type] ?? NODE_CONFIG.service;
-  const hasMismatch = data.hasMismatch || false;
-  const isDeleted   = data.isDeleted   || data.type === 'deleted';
-  const isBroken    = data.isBroken    || data.type === 'broken';
+const CLICKABLE_TYPES = new Set(['component', 'hook', 'api_call', 'context_provider']);
 
-  let accent = config.accent;
-  if (isBroken)    accent = '#f97316';
-  if (hasMismatch) accent = '#dc2626';
-  if (isDeleted)   accent = '#6b7280';
+const MONO = 'var(--font-mono)';
+
+/**
+ * The single most important thing wrong with this node.
+ *
+ * Only ONE badge is ever shown. Stacking three warnings on a 222px card makes
+ * every card look equally alarming, which defeats the ranking the triage
+ * panel works hard to establish. Order here mirrors triage severity.
+ */
+function pickBadge(data: CustomNodeProps['data']): string | null {
+  if (data.isBroken) return 'BROKEN DEPENDENCY';
+  if (data.isDeleted) return 'DELETED IN THIS PR';
+  if (data.hasMismatch || data.hasTypeMismatch) return 'TYPE MISMATCH';
+  if (data.hasBrokenProps) return 'PROP MISMATCH';
+  if (data.hasMissingDeps) {
+    const deps = data.missingDeps ?? [];
+    return deps.length > 0 ? `MISSING DEP: ${deps.join(', ')}` : 'MISSING DEP';
+  }
+  return null;
+}
+
+export function CustomNode({ data }: CustomNodeProps) {
+  const config = NODE_CONFIG[data.type] ?? NODE_CONFIG.service;
+  const badge = pickBadge(data);
+  const isDeleted = data.isDeleted || data.type === 'deleted';
+  const selected = Boolean(data.isSelected);
+  const located = Boolean(data.isLocated);
+  const clickable = CLICKABLE_TYPES.has(data.type);
+
+  const borderColor = selected
+    ? config.accent
+    : badge ? 'var(--warn-bd)' : 'var(--bd2)';
+
+  const boxShadow = located
+    ? `0 0 0 1px ${config.accent}, var(--shadow-lg)`
+    : selected
+      ? `0 0 0 1px ${config.accent}, var(--shadow-lg)`
+      : 'var(--shadow)';
 
   return (
-    <div style={{
-      position: 'relative',
-      padding: '10px 14px', paddingTop: '14px',
-      borderRadius: '10px',
-      border: `2px solid ${accent}`,
-      backgroundColor: 'var(--node-bg)',
-      boxShadow: isBroken
-        ? '0 0 0 3px rgba(249,115,22,0.2), 0 2px 8px rgba(0,0,0,0.12)'
-        : hasMismatch
-          ? '0 0 0 3px rgba(220,38,38,0.15), 0 2px 8px rgba(0,0,0,0.12)'
-          : '0 2px 8px rgba(0,0,0,0.08)',
-      minWidth: '160px', maxWidth: '220px',
-      textAlign: 'center',
-      opacity: isDeleted ? 0.65 : 1,
-    }}>
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0,
-        height: '4px', borderRadius: '8px 8px 0 0',
-        backgroundColor: accent,
+    <div
+      className={`dc-node${located ? ' dc-node--located' : ''}`}
+      style={{
+        // Staggered entrance: nodes fade in in layout order so the graph
+        // reads as assembling rather than snapping into place.
+        animationDelay: `${Math.min(data.order ?? 0, 24) * 28}ms`,
+        position: 'relative',
+        width: 222,
+        padding: '11px 12px',
+        borderRadius: 9,
+        background: selected ? 'var(--node-on)' : 'var(--node)',
+        border: `1px solid ${borderColor}`,
+        boxShadow,
+        cursor: clickable ? 'pointer' : 'default',
+        opacity: isDeleted ? 0.72 : 1,
+      }}
+    >
+      <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1 }} />
+
+      {/* Type accent bar */}
+      <span style={{
+        position: 'absolute', left: 0, top: 10, bottom: 10,
+        width: 2, borderRadius: 2, background: config.accent,
       }} />
 
-      <div style={{
-        marginBottom: '5px', fontSize: '10px', fontWeight: 600,
-        letterSpacing: '0.05em', textTransform: 'uppercase', color: accent,
-      }}>
-        {config.icon} {config.label}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 6 }}>
+        <span style={{ fontSize: 12, color: config.accent, lineHeight: 1, flexShrink: 0 }}>
+          {config.icon}
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+          <span
+            title={data.label}
+            style={{
+              fontFamily: MONO, fontSize: 11.5, fontWeight: 500, color: 'var(--t1)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              textDecoration: isDeleted ? 'line-through' : 'none',
+            }}
+          >
+            {data.label}
+          </span>
+          <span style={{
+            fontFamily: MONO, fontSize: 9, letterSpacing: '0.07em', color: 'var(--t6)',
+          }}>
+            {config.label}
+            {clickable && <span style={{ color: 'var(--t7)' }}> · click to trace</span>}
+          </span>
+        </div>
       </div>
 
-      <div style={{
-        wordBreak: 'break-word', fontSize: '12px', fontWeight: 500,
-        color: 'var(--node-text)', lineHeight: 1.4,
-        textDecoration: isDeleted ? 'line-through' : 'none',
-      }}>
-        {data.label}
-      </div>
-
-      {hasMismatch && !isBroken && (
-        <div style={{
-          marginTop: '6px', padding: '2px 6px',
-          backgroundColor: 'rgba(220,38,38,0.1)',
-          borderRadius: '4px', fontSize: '10px',
-          color: '#dc2626', fontWeight: 700,
-        }}>
-          ⚠️ TYPE MISMATCH
+      {badge && (
+        <div style={{ paddingLeft: 6 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 7,
+            fontFamily: MONO, fontSize: 9, letterSpacing: '0.06em',
+            color: 'var(--sev2)', background: 'var(--sev2-bg)',
+            border: '1px solid var(--warn-bd)', borderRadius: 4, padding: '2px 5px',
+            maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {badge}
+          </span>
         </div>
       )}
 
-      {isBroken && (
-        <div style={{
-          marginTop: '6px', padding: '2px 6px',
-          backgroundColor: 'rgba(249,115,22,0.1)',
-          borderRadius: '4px', fontSize: '10px',
-          color: '#f97316', fontWeight: 700,
-        }}>
-          💥 BROKEN DEPENDENCY
-        </div>
-      )}
-
-      {isDeleted && (
-        <div style={{
-          marginTop: '6px', padding: '2px 6px',
-          backgroundColor: 'rgba(107,114,128,0.1)',
-          borderRadius: '4px', fontSize: '10px',
-          color: '#6b7280', fontWeight: 700,
-        }}>
-          🗑️ DELETED IN THIS PR
-        </div>
-      )}
-
-      <Handle type="target" position={Position.Left}  style={{ background: accent, width: 8, height: 8 }} />
-      <Handle type="source" position={Position.Right} style={{ background: accent, width: 8, height: 8 }} />
+      <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1 }} />
     </div>
   );
 }

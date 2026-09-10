@@ -1,13 +1,371 @@
+/* src/index.css
+ *
+ * Design tokens, transcribed from the Claude Design handoff
+ * (`PR Analyzer Workspace.dc.html`).
+ *
+ * The design is DARK-FIRST: the bare `:root` block IS the dark palette, and
+ * `[data-theme="light"]` overrides it. That ordering is deliberate — it
+ * matches the mock, and it means a render before `useTheme` has stamped the
+ * attribute shows dark rather than an unstyled flash.
+ *
+ * Token naming follows the handoff verbatim (--t1..--t9, --bd..--bd5) rather
+ * than being "improved" into semantic names. Keeping the mock's vocabulary
+ * means any value here can be diffed against the source design directly,
+ * which matters more than prettier names when checking fidelity later.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root,
+[data-theme='dark'] {
+  --bg: #0b0d10;
+  --panel: #0e1116;
+  --sub: #0c0f14;
+  --input: #14181f;
+  --node: #13171e;
+  --node-on: #191f29;
+
+  --line: #171c24;
+  --chip: #161b23;
+  --code: #12161d;
+  --card: #101520;
+
+  --bd: #1e232b;
+  --bd2: #242b36;
+  --bd3: #232936;
+  --bd4: #1f242e;
+  --bd5: #2a313c;
+  --div: #1a1f27;
+  --bd-strong: #333d4d;
+  --edge: #2f3846;
+
+  --t1: #e6e9ef;
+  --t2: #c3cad6;
+  --t3: #a8b2c0;
+  --t4: #8b95a5;
+  --t5: #7d8797;
+  --t6: #616b7a;
+  --t7: #4a5462;
+  --t8: #3d4655;
+  --t9: #5d6775;
+
+  --sel-bg: #1b2230;
+  --sel-bd: #2c3646;
+  --info-bg: #0f1929;
+  --info-bd: #23344d;
+  --info-fg: #9cc4ff;
+
+  --violet-bg: #150f22;
+  --violet-bd: #33244a;
+
+  --warn-bg: #12100e;
+  --warn-bd: #2c2019;
+  --warn-t: #a89e97;
+  --on-accent: #06090d;
+  --scroll: #252b34;
+
+  --canvas: #0d1015;
+  --canvas-dot: #1a1f28;
+
+  /* Severity ramp, 1 = most severe. Maps to the Finding severity scale:
+     critical / high / medium / low. */
+  --sev1: #ff5a3d;
+  --sev2: #ff8a3d;
+  --sev3: #ffc93d;
+  --sev4: #9fb0c4;
+  --sev2-bg: rgba(255, 138, 61, 0.08);
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 26px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='light'] {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --sub: #fafbfc;
+  --input: #ffffff;
+  --node: #ffffff;
+  --node-on: #eef4ff;
+
+  --line: #eaeef3;
+  --chip: #f3f5f8;
+  --code: #f7f8fa;
+  --card: #ffffff;
+
+  --bd: #e2e6ec;
+  --bd2: #dde2ea;
+  --bd3: #e2e6ec;
+  --bd4: #e6eaf0;
+  --bd5: #dde2ea;
+  --div: #edf0f4;
+  --bd-strong: #b9c2ce;
+  --edge: #c2cad6;
+
+  --t1: #101419;
+  --t2: #333c48;
+  --t3: #4c5665;
+  --t4: #5f6a79;
+  --t5: #6d7787;
+  --t6: #8792a1;
+  --t7: #a3adba;
+  --t8: #b6bfca;
+  --t9: #8792a1;
+
+  --sel-bg: #eaf1ff;
+  --sel-bd: #c5daff;
+  --info-bg: #eff5ff;
+  --info-bd: #cddffb;
+  --info-fg: #1f5fd0;
+
+  --violet-bg: #f6f1ff;
+  --violet-bd: #dfd0f7;
+
+  --warn-bg: #fff8f2;
+  --warn-bd: #f2ddcb;
+  --warn-t: #7d6a5c;
+  --on-accent: #ffffff;
+  --scroll: #d2d8e0;
+
+  --canvas: #fbfcfd;
+  --canvas-dot: #e3e8ef;
+
+  --sev1: #c9331a;
+  --sev2: #a8500a;
+  --sev3: #7a5500;
+  --sev4: #5f6a79;
+  --sev2-bg: rgba(168, 80, 10, 0.09);
+
+  --shadow: 0 1px 3px rgba(16, 20, 25, 0.08);
+  --shadow-lg: 0 12px 28px rgba(16, 20, 25, 0.14);
+}
+
+/* ── Fixed accents ────────────────────────────────────────────────────────
+ * These do NOT flip with the theme in the design — they read acceptably on
+ * both grounds, and node-type identity should stay constant so a component is
+ * the same blue in light and dark.
+ */
+:root {
+  --accent: #4d8dff;
+  --accent-hover: #69a0ff;
+  --ok: #00c48c;
+  --violet: #b57cff;
+  --pink: #ff5cc8;
+
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, Helvetica, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
-  background: #f7f8fb;
+  padding: 0;
+  background: var(--bg);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
 }
 
 code {
-  background: #f0f1f3;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
+::selection {
+  background: rgba(77, 141, 255, 0.3);
+}
+
+/* Pulse used when the triage panel's LOCATE jumps to a node. */
+@keyframes pulseNode {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(77, 141, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(77, 141, 255, 0.45);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Motion that cannot be turned off is an accessibility defect.
+ *
+ * §7.5 recorded this as done and it was not: nothing in the codebase read the
+ * preference, so the graph's entrance stagger, the animated problem edges, the
+ * locate pulse and the analysis spinner all ran regardless of the setting.
+ *
+ * Animations are reduced to a single immediate frame rather than removed, so
+ * anything that relies on an animation ending still gets its event.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Node and usage accents.
+ *
+ * These were 13 literal hex values inside CustomNode.tsx and DetailPanel.tsx,
+ * so they did not change with the theme. On the light canvas several of them
+ * — the green, the cyan, the yellow — sat near 2:1 against white as 12px
+ * glyph text, which is unreadable rather than merely subtle.
+ *
+ * Named by ROLE where one exists and by hue where it does not: a node's colour
+ * is a category marker, and inventing semantic names for twenty-three
+ * arbitrary categories would be worse than admitting they are just hues.
+ */
+:root, [data-theme="dark"] {
+  --n-blue:   #4d8dff;
+  --n-blue-2: #5b93f0;   /* was #3b7ae0 — 4.32:1 on the dark node, under 4.5 */
+  --n-violet: #b57cff;
+  --n-purple: #9b6bff;
+  --n-purple-2: #a273ee; /* was #8a4fe0 — 3.66:1, well under */
+  --n-green:  #00c48c;
+  --n-cyan:   #00b8d4;
+  --n-pink:   #ff5cc8;
+  --n-orange: #ff8a3d;
+  --n-yellow: #ffc93d;
+  --n-red:    #ff5a3d;
+  --n-grey:   #7d8797;
+  --n-muted:  #8b93a3;   /* was #6b7280 — 3.72:1 */
+}
+
+/* Darkened for contrast on the light canvas. Same hue, enough depth to read. */
+[data-theme="light"] {
+  --n-blue:   #1f5fd0;
+  --n-blue-2: #1a54ba;
+  --n-violet: #6d3bd4;
+  --n-purple: #5c3ec8;
+  --n-purple-2: #5433b8;
+  --n-green:  #067a5b;
+  --n-cyan:   #056b7d;
+  --n-pink:   #b3277f;
+  --n-orange: #a8500a;
+  --n-yellow: #7a5500;
+  --n-red:    #c9331a;
+  --n-grey:   #5f6a79;
+  --n-muted:  #5b616b;
+}
+
+/* ── Keyboard focus ────────────────────────────────────────────────────────
+   There was no :focus rule anywhere in this stylesheet, so tabbing through
+   the app moved an invisible cursor: every control was reachable by keyboard
+   and none of them showed it. :focus-visible rather than :focus so a mouse
+   click does not leave a ring behind.                                       */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Inputs already carry a border, so the ring sits tight against it. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0;
+}
+
+/* ── Guided tour (driver.js) ───────────────────────────────────────────────
+   driver.css ships a light popover with its own palette. Repainted here with
+   the app's tokens so the tour follows the theme instead of turning white in
+   dark mode.                                                                */
+
+.driver-popover {
+  background: var(--panel);
+  color: var(--t2);
+  border: 1px solid var(--bd2);
+  border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+  max-width: 340px;
+  font-family: var(--font-sans);
+}
+
+.driver-popover-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--t1);
+}
+
+.driver-popover-description {
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--t4);
+}
+
+.driver-popover-progress-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--t6);
+}
+
+.driver-popover-navigation-btns button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  background: var(--input);
+  border: 1px solid var(--bd2);
+  color: var(--t3);
+  text-shadow: none;
+  cursor: pointer;
+}
+
+.driver-popover-navigation-btns button:hover {
+  background: var(--node-on);
+  color: var(--t1);
+}
+
+/* The last button in the row is Next/Done — the one to press. */
+.driver-popover-navigation-btns button:last-child {
+  background: var(--info-bg);
+  border-color: var(--info-bd);
+  color: var(--info-fg);
+}
+
+.driver-popover-close-btn {
+  color: var(--t6);
+}
+
+.driver-popover-close-btn:hover {
+  color: var(--t1);
+}
+
+/* The arrow is a bordered triangle; both halves need the theme colour. */
+.driver-popover-arrow-side-top    { border-top-color: var(--panel); }
+.driver-popover-arrow-side-bottom { border-bottom-color: var(--panel); }
+.driver-popover-arrow-side-left   { border-left-color: var(--panel); }
+.driver-popover-arrow-side-right  { border-right-color: var(--panel); }
