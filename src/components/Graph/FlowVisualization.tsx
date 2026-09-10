@@ -167,6 +167,19 @@ function FlowInner({
     },
   }));
 
+  /**
+   * Back to the whole graph after a Locate.
+   *
+   * Clears the selection and the located pulse as well as refitting — leaving
+   * a node highlighted after zooming out makes it look like it is still the
+   * subject of whatever panel is open.
+   */
+  const resetView = useCallback(() => {
+    onSelectNode(null);
+    setLocatedNodeId(null);
+    fitView({ padding: 0.2, duration: 400 });
+  }, [fitView, onSelectNode]);
+
   const downloadAsPNG = useCallback(async () => {
     const allNodes = getNodes();
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement | null;
@@ -316,7 +329,13 @@ function FlowInner({
         onShowHistory={() => setHistoryRequest(n => n + 1)}
       />
 
-      <CodeFlowBar dataTour="export" onExportPNG={downloadAsPNG} exporting={exporting} exportNote={exportNote} />
+      <CodeFlowBar
+        dataTour="export"
+        onExportPNG={downloadAsPNG}
+        exporting={exporting}
+        exportNote={exportNote}
+        onResetView={resetView}
+      />
 
       <div
         ref={canvasContainerRef}

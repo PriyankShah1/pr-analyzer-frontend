@@ -5,15 +5,18 @@
 //
 // Two sources feed it and they are shaped differently:
 //
-//   GRAPH ISSUES come from edge data (broken dependency, prop mismatch,
-//   missing dep, type mismatch). They know a node id, so they can offer
-//   LOCATE → to pan the canvas.
+//   FINDINGS come from `result.risks` (SQL rules, graph checks, the in-depth
+//   review). They know a file and a line, and they are the only rows that can
+//   become a PR comment. This is the main source.
 //
-//   FINDINGS come from `result.risks` (SQL rules + the in-depth review). They
-//   know a file and line, not a node. LOCATE is only offered when the file
-//   actually resolves to a node on the graph — otherwise the row shows
-//   `file:line`, because a Locate button that jumps somewhere arbitrary is
-//   worse than no button.
+//   GRAPH ISSUES come from edge data. They used to repeat the findings — the
+//   demo PR listed seven rows for three problems — so they now cover only the
+//   adjacent-flow return-type guess, which is deliberately never promoted to a
+//   finding.
+//
+// Every row shows its file when one is known, and offers LOCATE when the
+// problem resolves to a node on the graph. Those are separate things: a row
+// can have both, one, or neither.
 
 import { useState } from 'react';
 import type { Edge } from 'reactflow';
@@ -34,8 +37,12 @@ interface TriageItem {
   title: string;
   detail: string;
   confidence: string;
-  nodeId?: string;      // present only when the row can be located on the graph
-  location?: string;    // `file:line`, shown when nodeId is absent
+  nodeId?: string;      // set when the row can be jumped to on the graph
+  location?: string;    // `file:line` — shown ALWAYS when known, not only
+                        // when there is no node. A problem lives in a file
+                        // whether or not the graph happens to draw it, and
+                        // hiding the path because a button exists left most
+                        // rows with no way to tell where they were.
 }
 
 /**
@@ -80,7 +87,28 @@ function labelForKind(kind: string): string {
  * produced rows like "5 does not accept a prop 3 passes" — unreadable, and
  * it made the triage list look broken next to the findings rows.
  */
-function itemsFromEdges(edges: Edge[], nameOf: (id: string) => string): TriageItem[] {
+/**
+ * Rows derived from graph EDGES.
+ *
+ * These used to duplicate the findings. Broken dependencies, prop-type and
+ * prop-name mismatches and missing hook dependencies all arrive twice — once
+ * here from the edge, and once through `risks` as a real finding with a file,
+ * a line and a fingerprint. The demo PR showed seven rows for three problems,
+ * and the duplicate half had no location, which is why most rows looked like
+ * they had nowhere to go.
+ *
+ * `risks` wins, because only a finding can be posted as a comment. What is
+ * left here is the adjacent-flow return-type guess, which `graphFindings`
+ * deliberately never promotes to a finding — it is a hint, not an accusation.
+ *
+ * `hasGraphFindings` is false only if the findings never arrived (an older
+ * cached run). Then these rows come back rather than showing nothing.
+ */
+function itemsFromEdges(
+  edges: Edge[],
+  nameOf: (id: string) => string,
+  hasGraphFindings: boolean,
+): TriageItem[] {
   const items: TriageItem[] = [];
 
   for (const edge of edges) {
@@ -91,37 +119,39 @@ function itemsFromEdges(edges: Edge[], nameOf: (id: string) => string): TriageIt
     const target = nameOf(targetId);
     const source = nameOf(sourceId);
 
-    if (d.brokenDependency) {
+    const where: string | undefined = typeof d.file === 'string' ? d.file : undefined;
+
+    if (d.brokenDependency && !hasGraphFindings) {
       items.push({
         severity: 1, kind: 'BROKEN DEPENDENCY',
         title: `${source} references ${target}, deleted in this PR`,
         detail: d.message || 'The target was removed in this PR. This will fail at build or run time.',
-        confidence: 'certain', nodeId: targetId,
+        confidence: 'certain', nodeId: targetId, location: where,
       });
     }
 
-    if (d.typeMismatches?.length > 0) {
+    if (d.typeMismatches?.length > 0 && !hasGraphFindings) {
       items.push({
         severity: 2, kind: 'TYPE MISMATCH',
         title: d.typeMismatches.map((t: any) => `${t.propName}=${t.rawValue} where ${t.propName}: ${t.declaredType}`).join(', '),
         detail: d.message || 'A literal prop value does not match the declared type.',
-        confidence: 'certain', nodeId: targetId,
+        confidence: 'certain', nodeId: targetId, location: where,
       });
-    } else if (d.propCheckStatus === 'checked_broken') {
+    } else if (d.propCheckStatus === 'checked_broken' && !hasGraphFindings) {
       items.push({
         severity: 2, kind: 'PROP MISMATCH',
         title: `${target} does not accept a prop ${source} passes`,
         detail: d.message || '',
-        confidence: 'certain', nodeId: targetId,
+        confidence: 'certain', nodeId: targetId, location: where,
       });
     }
 
-    if (d.missingDeps?.length > 0) {
+    if (d.missingDeps?.length > 0 && !hasGraphFindings) {
       items.push({
         severity: 3, kind: 'MISSING DEP',
         title: `${source}'s hook is missing ${d.missingDeps.join(', ')}`,
         detail: 'The hook body reads these values but they are absent from its dependency array, so it will run against stale values.',
-        confidence: 'high', nodeId: targetId,
+        confidence: 'high', nodeId: targetId, location: where,
       });
     }
 
@@ -130,7 +160,7 @@ function itemsFromEdges(edges: Edge[], nameOf: (id: string) => string): TriageIt
         severity: 4, kind: 'TYPE MISMATCH',
         title: `${source} → ${target} return type mismatch`,
         detail: d.message || '',
-        confidence: 'heuristic', nodeId: targetId,
+        confidence: 'heuristic', nodeId: targetId, location: where,
       });
     }
   }
@@ -143,14 +173,22 @@ function itemsFromEdges(edges: Edge[], nameOf: (id: string) => string): TriageIt
  * `confidence` distinguishes a deterministic rule match (1) from a model
  * inference — worth surfacing, since a reviewer weighs those differently.
  */
-function itemsFromFindings(findings: Finding[], nodeIdByFile: Map<string, string>): TriageItem[] {
+function itemsFromFindings(
+  findings: Finding[],
+  nodeIdByFile: Map<string, string>,
+  nodeIdByTitle: (title: string) => string | undefined,
+): TriageItem[] {
   return findings.map(f => ({
     severity: (f.severityRank || 4) as 1 | 2 | 3 | 4,
     kind: labelForKind(f.kind),
     title: f.title,
     detail: f.suggestion ? `${f.detail} Fix: ${f.suggestion}` : f.detail,
     confidence: f.source === 'sql' ? 'certain' : `${Math.round((f.confidence ?? 0) * 100)}%`,
-    nodeId: nodeIdByFile.get(f.file),
+    // A finding can be reached two ways: the file it is in maps to a node, or
+    // the node is named in the title (`OrderSummary expects itemCount: …`).
+    // Only the first was tried, so a finding about a component that IS on the
+    // graph still offered no way to get to it.
+    nodeId: nodeIdByFile.get(f.file) ?? nodeIdByTitle(f.title),
     location: f.line ? `${f.file}:${f.line}` : f.file,
   }));
 }
@@ -243,8 +281,23 @@ export function TriagePanel({
   for (const n of nodes) nameById.set(String(n.id), String(n.data?.label ?? n.id));
   const nameOf = (id: string) => nameById.get(id) ?? id;
 
-  const items = [...itemsFromEdges(edges, nameOf), ...itemsFromFindings(risks, nodeIdByFile)]
-    .sort((a, b) => a.severity - b.severity);
+  // Longest label first, so `OrderSummaryRow` is not matched by `OrderSummary`.
+  const labelled = nodes
+    .map(n => ({ id: String(n.id), label: String(n.data?.label ?? '') }))
+    .filter(n => n.label.length > 2)
+    .sort((a, b) => b.label.length - a.label.length);
+  const nodeIdByTitle = (title: string) =>
+    labelled.find(n => title.includes(n.label))?.id;
+
+  // Graph checks arrive as findings with a file and a line, tagged 'static'
+  // (SQL rules are 'sql', the model is 'ai'). When they are present, the edge
+  // rows for the same checks are suppressed as duplicates.
+  const hasGraphFindings = risks.some(r => r.source === 'static');
+
+  const items = [
+    ...itemsFromEdges(edges, nameOf, hasGraphFindings),
+    ...itemsFromFindings(risks, nodeIdByFile, nodeIdByTitle),
+  ].sort((a, b) => a.severity - b.severity);
 
   if (items.length === 0) return null;
 
@@ -315,7 +368,7 @@ export function TriagePanel({
                 {item.detail && (
                   <div style={{ fontSize: 11.5, color: 'var(--t4)', lineHeight: 1.55 }}>{item.detail}</div>
                 )}
-                {!item.nodeId && item.location && (
+                {item.location && (
                   <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--t6)' }}>{item.location}</div>
                 )}
               </div>

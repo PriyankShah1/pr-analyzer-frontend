@@ -26,9 +26,17 @@ interface CodeFlowBarProps {
   exportNote?: string | null;
   /** Tour anchor, set on the root so no wrapper element is needed. */
   dataTour?: string;
+  /**
+   * Frames the whole graph again.
+   *
+   * "Locate" pans and zooms to one node and there was no way back — the canvas
+   * simply stayed where Locate had left it, and on a large graph that reads as
+   * the rest of the diagram having disappeared.
+   */
+  onResetView?: () => void;
 }
 
-export function CodeFlowBar({ onExportPNG, exporting = false, exportNote, dataTour }: CodeFlowBarProps) {
+export function CodeFlowBar({ onExportPNG, exporting = false, exportNote, dataTour, onResetView }: CodeFlowBarProps) {
   return (
     <div
       data-tour={dataTour}
@@ -67,6 +75,21 @@ export function CodeFlowBar({ onExportPNG, exporting = false, exportNote, dataTo
           </div>
         ))}
       </div>
+
+      {onResetView && (
+        <button
+          onClick={onResetView}
+          title="Fit the whole graph back on screen"
+          style={{
+            fontFamily: MONO, fontSize: 10, color: 'var(--t3)',
+            border: '1px solid var(--bd2)', background: 'var(--input)',
+            borderRadius: 5, padding: '5px 9px', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}
+        >
+          Reset view
+        </button>
+      )}
 
       <button
         onClick={onExportPNG}
